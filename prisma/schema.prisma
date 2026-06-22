@@ -1,0 +1,102 @@
+// NOVIDMS — Faza 1 schema (PostgreSQL).
+//
+// Set DATABASE_URL to your Postgres connection string. Run `npm run db:migrate`
+// to apply migrations (base schema + the raw-SQL full-text search migration).
+//
+// Tenant isolation rule: every query that reads documents, categories or users
+// MUST filter by the logged-in user's tenantId. See src/lib/tenant.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id         String     @id @default(cuid())
+  name       String
+  plan       Plan       @default(BASIC)
+  createdAt  DateTime   @default(now())
+  users      User[]
+  documents  Document[]
+  categories Category[]
+}
+
+model User {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  email      String    @unique
+  name       String
+  password   String // hash (scrypt)
+  role       Role      @default(MEMBER)
+  invitedAt  DateTime?
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  title        String
+  description  String?
+  fileKey      String // key in storage
+  mimeType     String
+  sizeBytes    Int
+  ocrText      String?   @db.Text
+  ocrStatus    OcrStatus @default(PENDING)
+  categoryId   String?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  partner      String?
+  documentDate DateTime?
+  uploadedById String
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  name      String
+  documents Document[]
+
+  @@index([tenantId])
+}
+
+model AuditEntry {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String?
+  userId     String
+  action     String // "UPLOAD" | "VIEW" | "DOWNLOAD" | "DELETE"
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, documentId])
+}
+
+enum Plan {
+  BASIC
+  BUSINESS
+  PROFESSIONAL
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum OcrStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
