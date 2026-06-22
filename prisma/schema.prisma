@@ -58,8 +58,14 @@ model Document {
   uploadedById String
   createdAt    DateTime  @default(now())
 
+  /// Full-text search vector, created by the add_fts_tsvector raw SQL migration
+  /// as a STORED generated column. Declared Unsupported so Prisma tracks it
+  /// without managing its generated expression.
+  searchVector Unsupported("tsvector")?
+
   @@index([tenantId])
   @@index([tenantId, categoryId])
+  @@index([searchVector], type: Gin)
 }
 
 model Category {
