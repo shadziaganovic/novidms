@@ -7,10 +7,15 @@ import { ACCEPT_ATTR } from "@/lib/documents";
 type Status = "pending" | "uploading" | "done" | "error";
 type Item = { name: string; status: Status; error?: string };
 
-export function UploadDropzone() {
+export function UploadDropzone({
+  costCenters,
+}: {
+  costCenters: { id: string; name: string; code: string | null }[];
+}) {
   const [items, setItems] = useState<Item[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [costCenterId, setCostCenterId] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -30,6 +35,7 @@ export function UploadDropzone() {
         try {
           const fd = new FormData();
           fd.append("file", files[i]);
+          if (costCenterId) fd.append("costCenterId", costCenterId);
           const res = await fetch("/api/documents", {
             method: "POST",
             body: fd,
@@ -67,11 +73,33 @@ export function UploadDropzone() {
         router.refresh();
       }
     },
-    [busy, router],
+    [busy, router, costCenterId],
   );
 
   return (
     <div className="flex flex-col gap-4">
+      {costCenters.length > 0 && (
+        <div className="max-w-sm">
+          <label className="label" htmlFor="batchCostCenter">
+            Troškovni centar (za sve datoteke u ovom prijenosu)
+          </label>
+          <select
+            id="batchCostCenter"
+            className="input"
+            value={costCenterId}
+            onChange={(e) => setCostCenterId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">— bez centra —</option>
+            {costCenters.map((cc) => (
+              <option key={cc.id} value={cc.id}>
+                {cc.code ? `${cc.code} · ${cc.name}` : cc.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div
         onDragOver={(e) => {
           e.preventDefault();

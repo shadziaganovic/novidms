@@ -1,10 +1,11 @@
-// NOVIDMS — Faza 1 schema (PostgreSQL).
+// NOVIDMS schema (PostgreSQL).
 //
 // Set DATABASE_URL to your Postgres connection string. Run `npm run db:migrate`
-// to apply migrations (base schema + the raw-SQL full-text search migration).
+// to apply migrations (base schema + the raw-SQL full-text search migrations).
 //
-// Tenant isolation rule: every query that reads documents, categories or users
-// MUST filter by the logged-in user's tenantId. See src/lib/tenant.ts.
+// Tenant isolation rule: every query that reads documents, categories, cost
+// centers or users MUST filter by the logged-in user's tenantId. See
+// src/lib/tenant.ts.
 
 generator client {
   provider = "prisma-client-js"
@@ -16,13 +17,14 @@ datasource db {
 }
 
 model Tenant {
-  id         String     @id @default(cuid())
-  name       String
-  plan       Plan       @default(BASIC)
-  createdAt  DateTime   @default(now())
-  users      User[]
-  documents  Document[]
-  categories Category[]
+  id           String       @id @default(cuid())
+  name         String
+  plan         Plan         @default(BASIC)
+  createdAt    DateTime     @default(now())
+  users        User[]
+  documents    Document[]
+  categories   Category[]
+  costCenters  CostCenter[]
 }
 
 model User {
@@ -41,22 +43,24 @@ model User {
 }
 
 model Document {
-  id           String    @id @default(cuid())
+  id           String      @id @default(cuid())
   tenantId     String
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  tenant       Tenant      @relation(fields: [tenantId], references: [id])
   title        String
   description  String?
   fileKey      String // key in storage
   mimeType     String
   sizeBytes    Int
-  ocrText      String?   @db.Text
-  ocrStatus    OcrStatus @default(PENDING)
+  ocrText      String?     @db.Text
+  ocrStatus    OcrStatus   @default(PENDING)
   categoryId   String?
-  category     Category? @relation(fields: [categoryId], references: [id])
+  category     Category?   @relation(fields: [categoryId], references: [id])
+  costCenterId String?
+  costCenter   CostCenter? @relation(fields: [costCenterId], references: [id])
   partner      String?
   documentDate DateTime?
   uploadedById String
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime    @default(now())
 
   /// Full-text search vector, created by the add_fts_tsvector raw SQL migration
   /// as a STORED generated column. Declared Unsupported so Prisma tracks it
@@ -65,6 +69,7 @@ model Document {
 
   @@index([tenantId])
   @@index([tenantId, categoryId])
+  @@index([tenantId, costCenterId])
   @@index([searchVector], type: Gin)
 }
 
@@ -74,6 +79,20 @@ model Category {
   tenant    Tenant     @relation(fields: [tenantId], references: [id])
   name      String
   documents Document[]
+
+  @@index([tenantId])
+}
+
+/// Faza 2: a cost center (e.g. an apartment / property) that documents are
+/// grouped under, so all invoices for one center can be listed and totalled.
+model CostCenter {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  name      String
+  code      String?
+  documents Document[]
+  createdAt DateTime   @default(now())
 
   @@index([tenantId])
 }

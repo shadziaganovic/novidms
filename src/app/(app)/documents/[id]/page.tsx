@@ -50,13 +50,15 @@ export default async function DocumentDetailPage({
       ocrStatus: true,
       createdAt: true,
       categoryId: true,
+      costCenterId: true,
       uploadedById: true,
       category: { select: { name: true } },
+      costCenter: { select: { name: true, code: true } },
     },
   });
   if (!doc) notFound();
 
-  const [uploader, history, categories] = await Promise.all([
+  const [uploader, history, categories, costCenters] = await Promise.all([
     prisma.user.findFirst({
       where: { id: doc.uploadedById, tenantId: ctx.tenantId },
       select: { name: true },
@@ -73,6 +75,15 @@ export default async function DocumentDetailPage({
           select: { id: true, name: true },
         })
       : Promise.resolve([] as { id: string; name: string }[]),
+    ctx.role === "ADMIN"
+      ? prisma.costCenter.findMany({
+          where: { tenantId: ctx.tenantId },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve(
+          [] as { id: string; name: string; code: string | null }[],
+        ),
   ]);
 
   const actorIds = [...new Set(history.map((h) => h.userId))];
@@ -98,6 +109,11 @@ export default async function DocumentDetailPage({
   const isImage =
     doc.mimeType === "image/png" || doc.mimeType === "image/jpeg";
   const rawUrl = `/api/documents/${doc.id}/raw`;
+  const costCenterLabel = doc.costCenter
+    ? doc.costCenter.code
+      ? `${doc.costCenter.code} · ${doc.costCenter.name}`
+      : doc.costCenter.name
+    : "—";
 
   return (
     <div className="flex flex-col gap-6">
@@ -158,6 +174,7 @@ export default async function DocumentDetailPage({
             Metapodaci
           </h2>
           <MetaRow label="Kategorija" value={doc.category?.name ?? "—"} />
+          <MetaRow label="Troškovni centar" value={costCenterLabel} />
           <MetaRow label="Partner" value={doc.partner ?? "—"} />
           <MetaRow
             label="Datum dokumenta"
@@ -210,8 +227,10 @@ export default async function DocumentDetailPage({
                 ? doc.documentDate.toISOString().slice(0, 10)
                 : "",
               categoryId: doc.categoryId,
+              costCenterId: doc.costCenterId,
             }}
             categories={categories}
+            costCenters={costCenters}
           />
         </div>
       ) : null}

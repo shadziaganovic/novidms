@@ -16,6 +16,7 @@ const UpdateSchema = z.object({
   partner: z.string().trim().optional(),
   documentDate: z.string().trim().optional(),
   categoryId: z.string().trim().optional(),
+  costCenterId: z.string().trim().optional(),
 });
 
 /** Edit document metadata (ADMIN only). Bound with the document id. */
@@ -35,11 +36,13 @@ export async function updateDocument(
     partner: formData.get("partner") ?? undefined,
     documentDate: formData.get("documentDate") ?? undefined,
     categoryId: formData.get("categoryId") ?? undefined,
+    costCenterId: formData.get("costCenterId") ?? undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neispravni podaci." };
   }
-  const { title, description, partner, documentDate, categoryId } = parsed.data;
+  const { title, description, partner, documentDate, categoryId, costCenterId } =
+    parsed.data;
 
   let resolvedCategoryId: string | null = null;
   if (categoryId) {
@@ -49,6 +52,16 @@ export async function updateDocument(
     });
     if (!cat) return { error: "Odabrana kategorija ne postoji." };
     resolvedCategoryId = cat.id;
+  }
+
+  let resolvedCostCenterId: string | null = null;
+  if (costCenterId) {
+    const cc = await prisma.costCenter.findFirst({
+      where: { id: costCenterId, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!cc) return { error: "Odabrani troškovni centar ne postoji." };
+    resolvedCostCenterId = cc.id;
   }
 
   let date: Date | null = null;
@@ -66,6 +79,7 @@ export async function updateDocument(
       partner: partner || null,
       documentDate: date,
       categoryId: resolvedCategoryId,
+      costCenterId: resolvedCostCenterId,
     },
   });
   if (result.count === 0) return { error: "Dokument nije pronađen." };

@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
+import { prisma } from "@/lib/prisma";
 import { UploadDropzone } from "@/components/UploadDropzone";
 
 export default async function NewDocumentPage() {
   // Any authenticated member may upload (spec: MEMBER can upload).
-  await getTenantContext();
+  const ctx = await getTenantContext();
+  const costCenters = await prisma.costCenter.findMany({
+    where: { tenantId: ctx.tenantId },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, code: true },
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -19,7 +25,7 @@ export default async function NewDocumentPage() {
           Natrag na dokumente
         </Link>
       </div>
-      <UploadDropzone />
+      <UploadDropzone costCenters={costCenters} />
     </div>
   );
 }

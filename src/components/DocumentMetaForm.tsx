@@ -11,11 +11,13 @@ interface Props {
     partner: string | null;
     documentDateValue: string; // yyyy-mm-dd or ""
     categoryId: string | null;
+    costCenterId: string | null;
   };
   categories: { id: string; name: string }[];
+  costCenters: { id: string; name: string; code: string | null }[];
 }
 
-export function DocumentMetaForm({ doc, categories }: Props) {
+export function DocumentMetaForm({ doc, categories, costCenters }: Props) {
   const action = updateDocument.bind(null, doc.id);
   const [state, formAction, pending] = useActionState<DocFormState, FormData>(
     action,
@@ -48,7 +50,7 @@ export function DocumentMetaForm({ doc, categories }: Props) {
           defaultValue={doc.description ?? ""}
         />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="partner">
             Partner
@@ -86,6 +88,24 @@ export function DocumentMetaForm({ doc, categories }: Props) {
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="costCenterId">
+            Troškovni centar
+          </label>
+          <select
+            id="costCenterId"
+            name="costCenterId"
+            className="input"
+            defaultValue={doc.costCenterId ?? ""}
+          >
+            <option value="">— bez centra —</option>
+            {costCenters.map((cc) => (
+              <option key={cc.id} value={cc.id}>
+                {cc.code ? `${cc.code} · ${cc.name}` : cc.name}
               </option>
             ))}
           </select>

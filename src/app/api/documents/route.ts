@@ -43,6 +43,17 @@ export async function POST(req: NextRequest) {
       ? titleRaw.trim()
       : file.name;
 
+  // Optional cost center — validated against this tenant; invalid ids are ignored.
+  const ccRaw = form.get("costCenterId");
+  let costCenterId: string | null = null;
+  if (typeof ccRaw === "string" && ccRaw) {
+    const cc = await prisma.costCenter.findFirst({
+      where: { id: ccRaw, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    costCenterId = cc?.id ?? null;
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileKey = buildStorageKey(ctx.tenantId, file.name);
   await storagePut(fileKey, buffer);
@@ -56,6 +67,7 @@ export async function POST(req: NextRequest) {
       sizeBytes: file.size,
       ocrStatus: "PENDING",
       uploadedById: ctx.userId,
+      costCenterId,
     },
     select: { id: true },
   });

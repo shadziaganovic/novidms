@@ -24,11 +24,13 @@ function sortHref(
   dir: string,
   q: string,
   cat: string,
+  cc: string,
 ): string {
   const nextDir = sort === col && dir === "asc" ? "desc" : "asc";
   const p = new URLSearchParams();
   if (q) p.set("q", q);
   if (cat) p.set("cat", cat);
+  if (cc) p.set("cc", cc);
   p.set("sort", col);
   p.set("dir", nextDir);
   return `/documents?${p.toString()}`;
@@ -41,6 +43,7 @@ function SortTh({
   dir,
   q,
   cat,
+  cc,
   align = "left",
 }: {
   col: SortKey;
@@ -49,6 +52,7 @@ function SortTh({
   dir: string;
   q: string;
   cat: string;
+  cc: string;
   align?: "left" | "right";
 }) {
   const active = sort === col;
@@ -56,7 +60,7 @@ function SortTh({
   return (
     <th className={`px-4 py-3 font-medium ${align === "right" ? "text-right" : ""}`}>
       <Link
-        href={sortHref(col, sort, dir, q, cat)}
+        href={sortHref(col, sort, dir, q, cat, cc)}
         className={`inline-flex items-center gap-1 hover:text-slate-700 ${
           active ? "text-slate-700" : ""
         }`}
@@ -74,6 +78,7 @@ export default async function DocumentsPage({
   searchParams: Promise<{
     q?: string;
     cat?: string;
+    cc?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -82,14 +87,16 @@ export default async function DocumentsPage({
   const sp = await searchParams;
   const query = sp.q?.trim() ?? "";
   const categoryId = sp.cat || undefined;
+  const costCenterId = sp.cc || undefined;
   const sort = sp.sort ?? "";
   const dir = sp.dir === "desc" ? "desc" : "asc";
 
-  const [rows, categories] = await Promise.all([
+  const [rows, categories, costCenters] = await Promise.all([
     findDocuments({
       tenantId: ctx.tenantId,
       q: query,
       categoryId,
+      costCenterId,
       sort,
       dir,
     }),
@@ -98,10 +105,16 @@ export default async function DocumentsPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.costCenter.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, code: true },
+    }),
   ]);
 
-  const filtering = query.length > 0 || !!categoryId;
   const cat = sp.cat ?? "";
+  const cc = sp.cc ?? "";
+  const filtering = query.length > 0 || !!categoryId || !!costCenterId;
 
   return (
     <div className="flex flex-col gap-6">
@@ -113,7 +126,7 @@ export default async function DocumentsPage({
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[16rem] flex-1">
+        <div className="min-w-[14rem] flex-1">
           <label className="label" htmlFor="q">
             Pretraga po sadržaju
           </label>
@@ -129,16 +142,24 @@ export default async function DocumentsPage({
           <label className="label" htmlFor="cat">
             Kategorija
           </label>
-          <select
-            id="cat"
-            name="cat"
-            defaultValue={categoryId ?? ""}
-            className="input"
-          >
+          <select id="cat" name="cat" defaultValue={cat} className="input">
             <option value="">Sve kategorije</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="cc">
+            Troškovni centar
+          </label>
+          <select id="cc" name="cc" defaultValue={cc} className="input">
+            <option value="">Svi centri</option>
+            {costCenters.map((center) => (
+              <option key={center.id} value={center.id}>
+                {center.code ? `${center.code} · ${center.name}` : center.name}
               </option>
             ))}
           </select>
@@ -176,16 +197,17 @@ export default async function DocumentsPage({
           )}
         </div>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <SortTh col="title" label="Naziv" sort={sort} dir={dir} q={query} cat={cat} />
-                <SortTh col="category" label="Kategorija" sort={sort} dir={dir} q={query} cat={cat} />
-                <SortTh col="partner" label="Partner" sort={sort} dir={dir} q={query} cat={cat} />
-                <SortTh col="date" label="Datum" sort={sort} dir={dir} q={query} cat={cat} />
-                <SortTh col="size" label="Veličina" sort={sort} dir={dir} q={query} cat={cat} />
-                <SortTh col="status" label="Status" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="title" label="Naziv" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="category" label="Kategorija" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="costcenter" label="Troškovni centar" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="partner" label="Partner" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="date" label="Datum" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="size" label="Veličina" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="status" label="Status" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -217,6 +239,13 @@ export default async function DocumentsPage({
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {d.categoryName ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {d.costCenterName
+                      ? d.costCenterCode
+                        ? `${d.costCenterCode} · ${d.costCenterName}`
+                        : d.costCenterName
+                      : "—"}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {d.partner ?? "—"}

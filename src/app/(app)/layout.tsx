@@ -34,6 +34,12 @@ export default async function AppLayout({
               </Link>
               {ctx.role === "ADMIN" ? (
                 <>
+                  <Link
+                    href="/admin/cost-centers"
+                    className="hover:text-brand-600"
+                  >
+                    Troškovni centri
+                  </Link>
                   <Link href="/admin/categories" className="hover:text-brand-600">
                     Kategorije
                   </Link>
