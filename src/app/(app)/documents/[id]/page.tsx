@@ -94,6 +94,10 @@ export default async function DocumentDetailPage({
   );
 
   const typeLabel = ALLOWED_MIME[doc.mimeType]?.label ?? doc.mimeType;
+  const isPdf = doc.mimeType === "application/pdf";
+  const isImage =
+    doc.mimeType === "image/png" || doc.mimeType === "image/jpeg";
+  const rawUrl = `/api/documents/${doc.id}/raw`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,6 +120,35 @@ export default async function DocumentDetailPage({
           </a>
           {ctx.role === "ADMIN" ? <DeleteDocumentButton id={doc.id} /> : null}
         </div>
+      </div>
+
+      {/* In-browser preview */}
+      <div className="card p-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+          Pregled
+        </h2>
+        {isPdf ? (
+          <iframe
+            src={rawUrl}
+            title={doc.title}
+            className="h-[70vh] w-full rounded-lg border border-slate-200"
+          />
+        ) : isImage ? (
+          <div className="flex justify-center rounded-lg border border-slate-200 bg-slate-50 p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={rawUrl}
+              alt={doc.title}
+              className="max-h-[70vh] w-auto object-contain"
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Pregled u pregledniku nije dostupan za ovaj tip datoteke (DOCX).
+            Prepoznati tekst je prikazan niže, a izvornik preuzmite gumbom
+            „Preuzmi".
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
