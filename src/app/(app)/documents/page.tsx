@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { findDocuments } from "@/lib/document-list";
+import { findDocuments, type SortKey } from "@/lib/document-list";
 import { StatusPill } from "@/components/StatusPill";
 import { formatBytes } from "@/lib/documents";
 import { formatDate } from "@/lib/format";
@@ -18,18 +18,81 @@ function highlight(value: string): string {
     .replaceAll("[[/HL]]", "</mark>");
 }
 
+function sortHref(
+  col: SortKey,
+  sort: string,
+  dir: string,
+  q: string,
+  cat: string,
+): string {
+  const nextDir = sort === col && dir === "asc" ? "desc" : "asc";
+  const p = new URLSearchParams();
+  if (q) p.set("q", q);
+  if (cat) p.set("cat", cat);
+  p.set("sort", col);
+  p.set("dir", nextDir);
+  return `/documents?${p.toString()}`;
+}
+
+function SortTh({
+  col,
+  label,
+  sort,
+  dir,
+  q,
+  cat,
+  align = "left",
+}: {
+  col: SortKey;
+  label: string;
+  sort: string;
+  dir: string;
+  q: string;
+  cat: string;
+  align?: "left" | "right";
+}) {
+  const active = sort === col;
+  const arrow = !active ? "↕" : dir === "asc" ? "▲" : "▼";
+  return (
+    <th className={`px-4 py-3 font-medium ${align === "right" ? "text-right" : ""}`}>
+      <Link
+        href={sortHref(col, sort, dir, q, cat)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 ${
+          active ? "text-slate-700" : ""
+        }`}
+      >
+        {label}
+        <span className="text-[10px] text-slate-400">{arrow}</span>
+      </Link>
+    </th>
+  );
+}
+
 export default async function DocumentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; cat?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    cat?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const ctx = await getTenantContext();
-  const { q, cat } = await searchParams;
-  const query = q?.trim() ?? "";
-  const categoryId = cat || undefined;
+  const sp = await searchParams;
+  const query = sp.q?.trim() ?? "";
+  const categoryId = sp.cat || undefined;
+  const sort = sp.sort ?? "";
+  const dir = sp.dir === "desc" ? "desc" : "asc";
 
   const [rows, categories] = await Promise.all([
-    findDocuments({ tenantId: ctx.tenantId, q: query, categoryId }),
+    findDocuments({
+      tenantId: ctx.tenantId,
+      q: query,
+      categoryId,
+      sort,
+      dir,
+    }),
     prisma.category.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { name: "asc" },
@@ -38,6 +101,7 @@ export default async function DocumentsPage({
   ]);
 
   const filtering = query.length > 0 || !!categoryId;
+  const cat = sp.cat ?? "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,12 +180,12 @@ export default async function DocumentsPage({
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Naziv</th>
-                <th className="px-4 py-3 font-medium">Kategorija</th>
-                <th className="px-4 py-3 font-medium">Partner</th>
-                <th className="px-4 py-3 font-medium">Datum</th>
-                <th className="px-4 py-3 font-medium">Veličina</th>
-                <th className="px-4 py-3 font-medium">Status</th>
+                <SortTh col="title" label="Naziv" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="category" label="Kategorija" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="partner" label="Partner" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="date" label="Datum" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="size" label="Veličina" sort={sort} dir={dir} q={query} cat={cat} />
+                <SortTh col="status" label="Status" sort={sort} dir={dir} q={query} cat={cat} />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
