@@ -44,7 +44,8 @@ export async function findDocuments(opts: {
                'StartSel=[[HL]],StopSel=[[/HL]],HighlightAll=true') AS "titleHL",
              d.partner, d."documentDate", d."ocrStatus"::text AS "ocrStatus",
              d."sizeBytes", d."createdAt", c.name AS "categoryName",
-             ts_headline('simple', coalesce(d."ocrText", ''),
+             ts_headline('simple',
+               coalesce(d."ocrText", '') || ' ' || coalesce(d."description", ''),
                plainto_tsquery('simple', ${q}), ${HEADLINE_OPTS}) AS snippet
       FROM "Document" d
       LEFT JOIN "Category" c ON c.id = d."categoryId"
