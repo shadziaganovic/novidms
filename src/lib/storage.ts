@@ -6,11 +6,11 @@ import { nanoid } from "nanoid";
 
 // Storage abstraction.
 //  - "disk"  (default): local filesystem — for development.
-//  - "blob": Vercel Blob — for the Vercel deployment (serverless has no
-//    persistent disk). Files are served only through authenticated app routes
-//    (/api/documents/[id]/raw|download), never by exposing the blob URL.
-// Swapping providers means implementing the three functions below; nothing else
-// in the app touches the filesystem.
+//  - "blob": Vercel Blob (PRIVATE) — for the Vercel deployment. Blobs are stored
+//    private (require auth to read), and read back server-side via get() using
+//    BLOB_READ_WRITE_TOKEN. Files are only ever served through authenticated app
+//    routes (/api/documents/[id]/raw|download), never by exposing a blob URL.
+// fileKey is the storage pathname (`tenantId/nanoid.ext`) for BOTH providers.
 
 const PROVIDER = process.env.STORAGE_PROVIDER ?? "disk";
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./uploads";
@@ -30,10 +30,7 @@ function diskPath(key: string): string {
   return path.join(path.resolve(STORAGE_DIR), safe);
 }
 
-/**
- * Store the data and return the reference to persist as `Document.fileKey`.
- * For disk this is the key; for blob this is the (unguessable) blob URL.
- */
+/** Store the data and return the reference to persist as `Document.fileKey`. */
 export async function storagePut(key: string, data: Buffer): Promise<string> {
   if (PROVIDER === "disk") {
     const full = diskPath(key);
@@ -43,12 +40,12 @@ export async function storagePut(key: string, data: Buffer): Promise<string> {
   }
   if (PROVIDER === "blob") {
     const { put } = await import("@vercel/blob");
-    const { url } = await put(key, data, {
-      access: "public",
+    await put(key, data, {
+      access: "private",
       addRandomSuffix: false,
       contentType: "application/octet-stream",
     });
-    return url;
+    return key; // store the pathname; read back via get()
   }
   throw new Error(
     `Storage provider '${PROVIDER}' nije podržan (koristi 'disk' ili 'blob').`,
@@ -60,9 +57,12 @@ export async function storageGet(ref: string): Promise<Buffer> {
     return readFile(diskPath(ref));
   }
   if (PROVIDER === "blob") {
-    const res = await fetch(ref);
-    if (!res.ok) throw new Error(`Blob dohvat nije uspio (${res.status}).`);
-    return Buffer.from(await res.arrayBuffer());
+    const { get } = await import("@vercel/blob");
+    const res = await get(ref, { access: "private" });
+    if (!res || res.statusCode !== 200 || !res.stream) {
+      throw new Error(`Blob nije pronađen: ${ref}`);
+    }
+    return Buffer.from(await new Response(res.stream).arrayBuffer());
   }
   throw new Error(`Storage provider '${PROVIDER}' nije podržan.`);
 }
@@ -75,7 +75,7 @@ export async function storageDelete(ref: string): Promise<void> {
   }
   if (PROVIDER === "blob") {
     const { del } = await import("@vercel/blob");
-    await del(ref);
+    await del(ref); // del accepts a pathname
     return;
   }
   throw new Error(`Storage provider '${PROVIDER}' nije podržan.`);
