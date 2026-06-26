@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { StatusPill } from "@/components/StatusPill";
 import { DocumentMetaForm } from "@/components/DocumentMetaForm";
 import { DeleteDocumentButton } from "@/components/DeleteDocumentButton";
+import { AiExtractButton } from "@/components/AiExtractButton";
 import { formatBytes, ALLOWED_MIME } from "@/lib/documents";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 
@@ -227,9 +228,12 @@ export default async function DocumentDetailPage({
       {/* Edit (admin only) */}
       {ctx.role === "ADMIN" ? (
         <div className="card p-5">
-          <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
-            Uredi metapodatke
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">
+              Uredi metapodatke
+            </h2>
+            {doc.ocrStatus === "DONE" ? <AiExtractButton id={doc.id} /> : null}
+          </div>
           <DocumentMetaForm
             doc={{
               id: doc.id,
