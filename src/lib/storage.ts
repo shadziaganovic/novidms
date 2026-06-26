@@ -4,9 +4,13 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { nanoid } from "nanoid";
 
-// Storage abstraction. Faza 1 ships a local-disk provider for development.
-// Swapping to an S3-compatible provider (R2/Backblaze/S3) means implementing the
-// three branches below — nothing else in the app references the filesystem.
+// Storage abstraction.
+//  - "disk"  (default): local filesystem — for development.
+//  - "blob": Vercel Blob — for the Vercel deployment (serverless has no
+//    persistent disk). Files are served only through authenticated app routes
+//    (/api/documents/[id]/raw|download), never by exposing the blob URL.
+// Swapping providers means implementing the three functions below; nothing else
+// in the app touches the filesystem.
 
 const PROVIDER = process.env.STORAGE_PROVIDER ?? "disk";
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./uploads";
@@ -26,30 +30,53 @@ function diskPath(key: string): string {
   return path.join(path.resolve(STORAGE_DIR), safe);
 }
 
-export async function storagePut(key: string, data: Buffer): Promise<void> {
+/**
+ * Store the data and return the reference to persist as `Document.fileKey`.
+ * For disk this is the key; for blob this is the (unguessable) blob URL.
+ */
+export async function storagePut(key: string, data: Buffer): Promise<string> {
   if (PROVIDER === "disk") {
     const full = diskPath(key);
     await mkdir(path.dirname(full), { recursive: true });
     await writeFile(full, data);
-    return;
+    return key;
+  }
+  if (PROVIDER === "blob") {
+    const { put } = await import("@vercel/blob");
+    const { url } = await put(key, data, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: "application/octet-stream",
+    });
+    return url;
   }
   throw new Error(
-    `Storage provider '${PROVIDER}' nije implementiran u Fazi 1 (dodajte S3/R2 u lib/storage.ts).`,
+    `Storage provider '${PROVIDER}' nije podržan (koristi 'disk' ili 'blob').`,
   );
 }
 
-export async function storageGet(key: string): Promise<Buffer> {
+export async function storageGet(ref: string): Promise<Buffer> {
   if (PROVIDER === "disk") {
-    return readFile(diskPath(key));
+    return readFile(diskPath(ref));
   }
-  throw new Error(`Storage provider '${PROVIDER}' nije implementiran.`);
+  if (PROVIDER === "blob") {
+    const res = await fetch(ref);
+    if (!res.ok) throw new Error(`Blob dohvat nije uspio (${res.status}).`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  throw new Error(`Storage provider '${PROVIDER}' nije podržan.`);
 }
 
-export async function storageDelete(key: string): Promise<void> {
+export async function storageDelete(ref: string): Promise<void> {
   if (PROVIDER === "disk") {
-    const full = diskPath(key);
+    const full = diskPath(ref);
     if (existsSync(full)) await unlink(full);
     return;
   }
-  throw new Error(`Storage provider '${PROVIDER}' nije implementiran.`);
+  if (PROVIDER === "blob") {
+    const { del } = await import("@vercel/blob");
+    await del(ref);
+    return;
+  }
+  throw new Error(`Storage provider '${PROVIDER}' nije podržan.`);
 }

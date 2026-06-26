@@ -55,8 +55,10 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const fileKey = buildStorageKey(ctx.tenantId, file.name);
-  await storagePut(fileKey, buffer);
+  const fileKey = await storagePut(
+    buildStorageKey(ctx.tenantId, file.name),
+    buffer,
+  );
 
   const doc = await prisma.document.create({
     data: {
