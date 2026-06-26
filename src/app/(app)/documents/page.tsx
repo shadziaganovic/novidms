@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { findDocuments, type SortKey } from "@/lib/document-list";
+import { findDocuments, sumDocuments, type SortKey } from "@/lib/document-list";
 import { StatusPill } from "@/components/StatusPill";
 import { formatBytes } from "@/lib/documents";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 
 // Escape HTML, then turn our [[HL]] sentinels into <mark>. Safe to feed into
 // dangerouslySetInnerHTML — document content is escaped, only <mark> survives.
@@ -90,16 +90,11 @@ export default async function DocumentsPage({
   const costCenterId = sp.cc || undefined;
   const sort = sp.sort ?? "";
   const dir = sp.dir === "desc" ? "desc" : "asc";
+  const filter = { tenantId: ctx.tenantId, q: query, categoryId, costCenterId };
 
-  const [rows, categories, costCenters] = await Promise.all([
-    findDocuments({
-      tenantId: ctx.tenantId,
-      q: query,
-      categoryId,
-      costCenterId,
-      sort,
-      dir,
-    }),
+  const [rows, totals, categories, costCenters] = await Promise.all([
+    findDocuments({ ...filter, sort, dir }),
+    sumDocuments(filter),
     prisma.category.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { name: "asc" },
@@ -115,6 +110,7 @@ export default async function DocumentsPage({
   const cat = sp.cat ?? "";
   const cc = sp.cc ?? "";
   const filtering = query.length > 0 || !!categoryId || !!costCenterId;
+  const noun = totals.count === 1 ? (filtering ? "rezultat" : "dokument") : filtering ? "rezultata" : "dokumenata";
 
   return (
     <div className="flex flex-col gap-6">
@@ -175,9 +171,13 @@ export default async function DocumentsPage({
       </form>
 
       <p className="text-sm text-slate-500">
-        {filtering
-          ? `${rows.length} ${rows.length === 1 ? "rezultat" : "rezultata"}`
-          : `${rows.length} ${rows.length === 1 ? "dokument" : "dokumenata"}`}
+        {totals.count} {noun} · Ukupan iznos:{" "}
+        <span className="font-semibold text-slate-700">
+          {formatMoney(totals.total)}
+        </span>
+        {totals.count > rows.length ? (
+          <span className="text-slate-400"> (prikazano prvih {rows.length})</span>
+        ) : null}
       </p>
 
       {rows.length === 0 ? (
@@ -205,8 +205,8 @@ export default async function DocumentsPage({
                 <SortTh col="category" label="Kategorija" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
                 <SortTh col="costcenter" label="Troškovni centar" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
                 <SortTh col="partner" label="Partner" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="amount" label="Iznos" sort={sort} dir={dir} q={query} cat={cat} cc={cc} align="right" />
                 <SortTh col="date" label="Datum" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="size" label="Veličina" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
                 <SortTh col="status" label="Status" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
               </tr>
             </thead>
@@ -250,11 +250,11 @@ export default async function DocumentsPage({
                   <td className="px-4 py-3 text-slate-600">
                     {d.partner ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatDate(d.documentDate ?? d.createdAt)}
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+                    {d.amount != null ? formatMoney(d.amount) : "—"}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {formatBytes(d.sizeBytes)}
+                    {formatDate(d.documentDate ?? d.createdAt)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusPill status={d.ocrStatus} />

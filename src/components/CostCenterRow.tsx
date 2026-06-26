@@ -6,17 +6,20 @@ import {
   deleteCostCenter,
   type CcFormState,
 } from "@/app/actions/cost-centers";
+import { formatMoney } from "@/lib/format";
 
 export function CostCenterRow({
   id,
   name,
   code,
   count,
+  total,
 }: {
   id: string;
   name: string;
   code: string | null;
   count: number;
+  total: number;
 }) {
   const rename = renameCostCenter.bind(null, id);
   const [state, action, pending] = useActionState<CcFormState, FormData>(
@@ -57,6 +60,9 @@ export function CostCenterRow({
         </form>
       </td>
       <td className="px-4 py-3 text-slate-600">{count}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+        {formatMoney(total)}
+      </td>
       <td className="px-4 py-3 text-right">
         <form
           action={del}

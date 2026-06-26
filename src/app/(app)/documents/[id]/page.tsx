@@ -8,7 +8,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { DocumentMetaForm } from "@/components/DocumentMetaForm";
 import { DeleteDocumentButton } from "@/components/DeleteDocumentButton";
 import { formatBytes, ALLOWED_MIME } from "@/lib/documents";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 
 const AUDIT_LABEL: Record<string, string> = {
   UPLOAD: "Dodano",
@@ -43,7 +43,10 @@ export default async function DocumentDetailPage({
       title: true,
       description: true,
       partner: true,
+      invoiceNumber: true,
+      amount: true,
       documentDate: true,
+      dueDate: true,
       mimeType: true,
       sizeBytes: true,
       ocrText: true,
@@ -114,6 +117,7 @@ export default async function DocumentDetailPage({
       ? `${doc.costCenter.code} · ${doc.costCenter.name}`
       : doc.costCenter.name
     : "—";
+  const amountStr = doc.amount ? doc.amount.toString() : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -176,9 +180,18 @@ export default async function DocumentDetailPage({
           <MetaRow label="Kategorija" value={doc.category?.name ?? "—"} />
           <MetaRow label="Troškovni centar" value={costCenterLabel} />
           <MetaRow label="Partner" value={doc.partner ?? "—"} />
+          <MetaRow label="Broj računa" value={doc.invoiceNumber ?? "—"} />
+          <MetaRow
+            label="Iznos"
+            value={doc.amount ? formatMoney(doc.amount.toString()) : "—"}
+          />
           <MetaRow
             label="Datum dokumenta"
             value={doc.documentDate ? formatDate(doc.documentDate) : "—"}
+          />
+          <MetaRow
+            label="Dospijeće"
+            value={doc.dueDate ? formatDate(doc.dueDate) : "—"}
           />
           <MetaRow label="Tip" value={typeLabel} />
           <MetaRow label="Veličina" value={formatBytes(doc.sizeBytes)} />
@@ -223,8 +236,13 @@ export default async function DocumentDetailPage({
               title: doc.title,
               description: doc.description,
               partner: doc.partner,
+              invoiceNumber: doc.invoiceNumber,
+              amountValue: amountStr,
               documentDateValue: doc.documentDate
                 ? doc.documentDate.toISOString().slice(0, 10)
+                : "",
+              dueDateValue: doc.dueDate
+                ? doc.dueDate.toISOString().slice(0, 10)
                 : "",
               categoryId: doc.categoryId,
               costCenterId: doc.costCenterId,

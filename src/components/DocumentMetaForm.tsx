@@ -9,7 +9,10 @@ interface Props {
     title: string;
     description: string | null;
     partner: string | null;
+    invoiceNumber: string | null;
+    amountValue: string; // e.g. "123.45" or ""
     documentDateValue: string; // yyyy-mm-dd or ""
+    dueDateValue: string; // yyyy-mm-dd or ""
     categoryId: string | null;
     costCenterId: string | null;
   };
@@ -50,7 +53,48 @@ export function DocumentMetaForm({ doc, categories, costCenters }: Props) {
           defaultValue={doc.description ?? ""}
         />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div>
+          <label className="label" htmlFor="invoiceNumber">
+            Broj računa
+          </label>
+          <input
+            id="invoiceNumber"
+            name="invoiceNumber"
+            className="input"
+            defaultValue={doc.invoiceNumber ?? ""}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="amount">
+            Iznos (€)
+          </label>
+          <input
+            id="amount"
+            name="amount"
+            type="number"
+            step="0.01"
+            min="0"
+            className="input"
+            defaultValue={doc.amountValue}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="dueDate">
+            Dospijeće
+          </label>
+          <input
+            id="dueDate"
+            name="dueDate"
+            type="date"
+            className="input"
+            defaultValue={doc.dueDateValue}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="label" htmlFor="partner">
             Partner
@@ -111,6 +155,7 @@ export function DocumentMetaForm({ doc, categories, costCenters }: Props) {
           </select>
         </div>
       </div>
+
       <div className="flex items-center gap-3">
         <button type="submit" className="btn-primary btn-sm" disabled={pending}>
           {pending ? "Spremanje…" : "Spremi izmjene"}

@@ -57,10 +57,13 @@ model Document {
   category     Category?   @relation(fields: [categoryId], references: [id])
   costCenterId String?
   costCenter   CostCenter? @relation(fields: [costCenterId], references: [id])
-  partner      String?
-  documentDate DateTime?
-  uploadedById String
-  createdAt    DateTime    @default(now())
+  partner       String?
+  documentDate  DateTime?
+  amount        Decimal?    @db.Decimal(12, 2)
+  invoiceNumber String?
+  dueDate       DateTime?
+  uploadedById  String
+  createdAt     DateTime    @default(now())
 
   /// Full-text search vector, created by the add_fts_tsvector raw SQL migration
   /// as a STORED generated column. Declared Unsupported so Prisma tracks it
