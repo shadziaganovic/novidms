@@ -112,13 +112,25 @@ export default async function DocumentsPage({
   const filtering = query.length > 0 || !!categoryId || !!costCenterId;
   const noun = totals.count === 1 ? (filtering ? "rezultat" : "dokument") : filtering ? "rezultata" : "dokumenata";
 
+  const exportParams = new URLSearchParams();
+  if (query) exportParams.set("q", query);
+  if (cat) exportParams.set("cat", cat);
+  if (cc) exportParams.set("cc", cc);
+  const exportQs = exportParams.toString();
+  const exportHref = `/api/documents/export${exportQs ? `?${exportQs}` : ""}`;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Dokumenti</h1>
-        <Link href="/documents/new" className="btn-primary btn-sm">
-          Dodaj dokument
-        </Link>
+        <div className="flex items-center gap-2">
+          <a href={exportHref} className="btn-secondary btn-sm">
+            Izvoz u Excel
+          </a>
+          <Link href="/documents/new" className="btn-primary btn-sm">
+            Dodaj dokument
+          </Link>
+        </div>
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3">

@@ -139,3 +139,35 @@ export async function sumDocuments(
     WHERE ${where}`;
   return rows[0] ?? { total: 0, count: 0 };
 }
+
+export interface ExportRow {
+  title: string;
+  categoryName: string | null;
+  costCenterCode: string | null;
+  costCenterName: string | null;
+  partner: string | null;
+  invoiceNumber: string | null;
+  amount: number | null;
+  documentDate: Date | null;
+  dueDate: Date | null;
+  ocrStatus: string;
+  createdAt: Date;
+}
+
+/** All matching documents (same filter, no 100-row cap) for spreadsheet export. */
+export async function listDocumentsForExport(
+  opts: DocFilter,
+): Promise<ExportRow[]> {
+  const where = buildWhere(opts);
+  return prisma.$queryRaw<ExportRow[]>`
+    SELECT d.title, c.name AS "categoryName", cc.code AS "costCenterCode",
+           cc.name AS "costCenterName", d.partner, d."invoiceNumber",
+           d."amount"::float8 AS amount, d."documentDate", d."dueDate",
+           d."ocrStatus"::text AS "ocrStatus", d."createdAt"
+    FROM "Document" d
+    LEFT JOIN "Category" c ON c.id = d."categoryId"
+    LEFT JOIN "CostCenter" cc ON cc.id = d."costCenterId"
+    WHERE ${where}
+    ORDER BY d."createdAt" DESC
+    LIMIT 10000`;
+}
