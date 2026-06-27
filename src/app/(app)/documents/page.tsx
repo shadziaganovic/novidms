@@ -15,10 +15,9 @@ import { formatDate, formatMoney, formatMonthYear, MONTHS_HR } from "@/lib/forma
 // Number of columns in the table — used for the group header colSpan.
 const COLS = 7;
 
-// Page-size choices for the list. "all" is capped to ALL_LIMIT as a safety net.
-const PER_OPTIONS = ["10", "20", "50", "100", "all"] as const;
-const DEFAULT_PER = "20";
-const ALL_LIMIT = 10000;
+// Page-size choices for the list.
+const PER_OPTIONS = ["10", "25", "50", "100"] as const;
+const DEFAULT_PER = "25";
 
 type ListParams = {
   sort: string;
@@ -30,6 +29,7 @@ type ListParams = {
   month: string;
   group: boolean;
   per: string;
+  page: number;
 };
 
 // Escape HTML, then turn our [[HL]] sentinels into <mark>. Safe to feed into
@@ -75,6 +75,49 @@ function perHref(value: string, p: ListParams): string {
   if (value !== DEFAULT_PER) sp.set("per", value);
   const qs = sp.toString();
   return qs ? `/documents?${qs}` : "/documents";
+}
+
+// Link that changes only the page number, preserving filters/sort/page-size.
+function pageHref(target: number, p: ListParams): string {
+  const sp = new URLSearchParams();
+  if (p.q) sp.set("q", p.q);
+  if (p.cat) sp.set("cat", p.cat);
+  if (p.cc) sp.set("cc", p.cc);
+  if (p.year) sp.set("year", p.year);
+  if (p.month) sp.set("month", p.month);
+  if (p.group) sp.set("group", "month");
+  if (!p.group && p.sort) {
+    sp.set("sort", p.sort);
+    sp.set("dir", p.dir);
+  }
+  if (p.per !== DEFAULT_PER) sp.set("per", p.per);
+  if (target > 1) sp.set("page", String(target));
+  const qs = sp.toString();
+  return qs ? `/documents?${qs}` : "/documents";
+}
+
+// A pagination button: a real link, or a muted span when disabled.
+function PageBtn({
+  href,
+  label,
+  disabled,
+}: {
+  href: string;
+  label: string;
+  disabled: boolean;
+}) {
+  const base =
+    "inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md border px-2";
+  return disabled ? (
+    <span className={`${base} border-slate-200 text-slate-300`}>{label}</span>
+  ) : (
+    <Link
+      href={href}
+      className={`${base} border-slate-300 text-slate-600 hover:bg-slate-50`}
+    >
+      {label}
+    </Link>
+  );
 }
 
 function SortTh({
@@ -206,6 +249,7 @@ export default async function DocumentsPage({
     sort?: string;
     dir?: string;
     per?: string;
+    page?: string;
   }>;
 }) {
   const ctx = await getTenantContext();
@@ -229,7 +273,7 @@ export default async function DocumentsPage({
   const per = (PER_OPTIONS as readonly string[]).includes(sp.per ?? "")
     ? (sp.per as string)
     : DEFAULT_PER;
-  const limit = per === "all" ? ALL_LIMIT : Number(per);
+  const pageSize = Number(per);
 
   const filter = {
     tenantId: ctx.tenantId,
@@ -240,8 +284,8 @@ export default async function DocumentsPage({
     month: monthNum,
   };
 
-  const [rows, totals, categories, costCenters, years] = await Promise.all([
-    findDocuments({ ...filter, sort, dir, limit }),
+  // Totals (across all matches) first, so we can clamp the page before fetching.
+  const [totals, categories, costCenters, years] = await Promise.all([
     sumDocuments(filter),
     prisma.category.findMany({
       where: { tenantId: ctx.tenantId },
@@ -255,6 +299,16 @@ export default async function DocumentsPage({
     }),
     listDocumentYears(ctx.tenantId),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(totals.count / pageSize));
+  const page = Math.min(Math.max(1, Number(sp.page) || 1), totalPages);
+  const rows = await findDocuments({
+    ...filter,
+    sort,
+    dir,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
 
   const cat = sp.cat ?? "";
   const cc = sp.cc ?? "";
@@ -270,6 +324,7 @@ export default async function DocumentsPage({
     month: monthStr,
     group: grouping,
     per,
+    page,
   };
 
   const filtering =
@@ -398,37 +453,6 @@ export default async function DocumentsPage({
         ) : null}
       </form>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
-        <p>
-          {rows.length < totals.count
-            ? `Prikazano ${rows.length} od ${totals.count} ${noun}`
-            : `${totals.count} ${noun}`}{" "}
-          · Ukupan iznos:{" "}
-          <span className="font-semibold text-slate-700">
-            {formatMoney(totals.total)}
-          </span>
-        </p>
-        <div className="flex items-center gap-2">
-          <span>Po stranici:</span>
-          {PER_OPTIONS.map((opt) => {
-            const label = opt === "all" ? "Sve" : opt;
-            return per === opt ? (
-              <span key={opt} className="font-semibold text-slate-700">
-                {label}
-              </span>
-            ) : (
-              <Link
-                key={opt}
-                href={perHref(opt, params)}
-                className="hover:text-slate-700 hover:underline"
-              >
-                {label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
       {rows.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">
           {filtering ? (
@@ -446,6 +470,7 @@ export default async function DocumentsPage({
           )}
         </div>
       ) : (
+        <div className="flex flex-col gap-3">
         <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -489,6 +514,52 @@ export default async function DocumentsPage({
                   ))}
             </tbody>
           </table>
+        </div>
+        <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-slate-500">
+          <div className="flex items-center gap-2">
+            <span>Prikaži po:</span>
+            {PER_OPTIONS.map((opt) =>
+              per === opt ? (
+                <span key={opt} className="font-semibold text-slate-700">
+                  {opt}
+                </span>
+              ) : (
+                <Link
+                  key={opt}
+                  href={perHref(opt, params)}
+                  className="hover:text-slate-700 hover:underline"
+                >
+                  {opt}
+                </Link>
+              ),
+            )}
+          </div>
+          <div>
+            Ukupno:{" "}
+            <span className="font-semibold text-slate-700">{totals.count}</span>{" "}
+            {noun} ·{" "}
+            <span className="font-semibold text-slate-700">
+              {formatMoney(totals.total)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <PageBtn href={pageHref(1, params)} label="«" disabled={page <= 1} />
+            <PageBtn href={pageHref(page - 1, params)} label="‹" disabled={page <= 1} />
+            <span className="px-2 text-slate-600">
+              {page} / {totalPages}
+            </span>
+            <PageBtn
+              href={pageHref(page + 1, params)}
+              label="›"
+              disabled={page >= totalPages}
+            />
+            <PageBtn
+              href={pageHref(totalPages, params)}
+              label="»"
+              disabled={page >= totalPages}
+            />
+          </div>
+        </div>
         </div>
       )}
     </div>
