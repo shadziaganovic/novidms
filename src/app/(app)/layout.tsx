@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { logout } from "@/app/actions/auth";
+import { ProfileMenu } from "@/components/ProfileMenu";
 import { tenantIsActive, trialDaysLeft, restrictedMessage } from "@/lib/entitlement";
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "info@docorex.com";
@@ -15,7 +15,7 @@ export default async function AppLayout({
   const [user, tenant] = await Promise.all([
     prisma.user.findFirst({
       where: { id: ctx.userId, tenantId: ctx.tenantId },
-      select: { name: true, platformAdmin: true },
+      select: { name: true, email: true, platformAdmin: true },
     }),
     prisma.tenant.findUnique({
       where: { id: ctx.tenantId },
@@ -65,17 +65,14 @@ export default async function AppLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <Link
-              href="/account"
-              className="hidden text-slate-500 hover:text-brand-600 sm:inline"
-            >
-              {user?.name} · {tenant?.name}
-            </Link>
-            <form action={logout}>
-              <button type="submit" className="btn-ghost btn-sm">
-                Odjava
-              </button>
-            </form>
+            <span className="hidden text-slate-400 sm:inline">
+              {tenant?.name}
+            </span>
+            <ProfileMenu
+              name={user?.name ?? ""}
+              email={user?.email ?? ""}
+              isAdmin={ctx.role === "ADMIN"}
+            />
           </div>
         </div>
       </header>
