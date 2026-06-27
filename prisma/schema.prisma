@@ -25,6 +25,8 @@ model Tenant {
   // blocked; reads stay open. The platform owner flips status from /owner.
   status       TenantStatus @default(TRIAL)
   trialEndsAt  DateTime?
+  // Email admine kad netko doda novi dokument (uključeno po defaultu).
+  notifyNewDocument Boolean  @default(true)
   createdAt    DateTime     @default(now())
   users        User[]
   documents    Document[]

@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { processDocumentOcr } from "@/lib/ocr";
 import { autoExtractInvoice } from "@/lib/ai-extract";
 import { loadEntitlement, restrictedMessage } from "@/lib/entitlement";
+import { notifyNewDocumentUpload } from "@/lib/notify";
 
 // OCR — including AI vision OCR for scanned documents — runs in after(), which is
 // bound by the route's max duration. Give it room (Vercel Hobby caps at 60s).
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
   after(async () => {
     await processDocumentOcr(doc.id);
     await autoExtractInvoice(doc.id, ctx.tenantId);
+    await notifyNewDocumentUpload(doc.id, ctx.tenantId, ctx.userId);
   });
 
   return NextResponse.json({ id: doc.id }, { status: 201 });

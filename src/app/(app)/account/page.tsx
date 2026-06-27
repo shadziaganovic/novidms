@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { ProfileForm } from "@/components/ProfileForm";
 import { CompanyForm } from "@/components/CompanyForm";
+import { NotificationsForm } from "@/components/NotificationsForm";
 
 export default async function AccountPage() {
   const ctx = await getTenantContext();
@@ -13,7 +14,7 @@ export default async function AccountPage() {
     }),
     prisma.tenant.findUnique({
       where: { id: ctx.tenantId },
-      select: { name: true },
+      select: { name: true, notifyNewDocument: true },
     }),
   ]);
 
@@ -41,12 +42,22 @@ export default async function AccountPage() {
       </section>
 
       {ctx.role === "ADMIN" ? (
-        <section id="firma" className="card scroll-mt-20 p-5">
-          <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
-            Postavke firme
-          </h2>
-          <CompanyForm name={tenant?.name ?? ""} />
-        </section>
+        <>
+          <section id="firma" className="card scroll-mt-20 p-5">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+              Postavke firme
+            </h2>
+            <CompanyForm name={tenant?.name ?? ""} />
+          </section>
+          <section id="obavijesti" className="card scroll-mt-20 p-5">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+              Obavijesti
+            </h2>
+            <NotificationsForm
+              notifyNewDocument={tenant?.notifyNewDocument ?? true}
+            />
+          </section>
+        </>
       ) : null}
     </div>
   );

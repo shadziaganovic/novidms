@@ -52,3 +52,19 @@ export async function updateCompany(
   revalidatePath("/account");
   return { ok: true };
 }
+
+/** Update the company notification settings. Admin only, tenant-scoped. */
+export async function updateNotifications(
+  _prev: ProfileState,
+  formData: FormData,
+): Promise<ProfileState> {
+  const ctx = await getTenantContext();
+  if (ctx.role !== "ADMIN") return { error: "Samo administrator firme." };
+  const notifyNewDocument = formData.get("notifyNewDocument") === "on";
+  await prisma.tenant.update({
+    where: { id: ctx.tenantId },
+    data: { notifyNewDocument },
+  });
+  revalidatePath("/account");
+  return { ok: true };
+}

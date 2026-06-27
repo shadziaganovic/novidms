@@ -145,3 +145,46 @@ export async function sendPasswordResetEmail(opts: {
       `Ako to niste bili vi, zanemarite ovaj email.\n`,
   });
 }
+
+const NEW_DOC_FOOTER =
+  "Ovaj email poslan je jer su uključene obavijesti o novim dokumentima za vašu firmu. Možete ih isključiti u Docorexu: Moj profil → Obavijesti.";
+
+/** Notify a company admin that a new document was uploaded. */
+export async function sendNewDocumentEmail(opts: {
+  to: string;
+  recipientName: string;
+  documentTitle: string;
+  uploaderName: string;
+  tenantName: string;
+  documentLink: string;
+}): Promise<SendResult> {
+  const name = opts.recipientName.trim();
+  const greeting = name ? `Pozdrav ${escapeHtml(name)},` : "Pozdrav,";
+  const uploader = opts.uploaderName.trim() || "Korisnik";
+  const firm = opts.tenantName.trim() || "vašu firmu";
+
+  const content = `
+    <h1 style="margin:0 0 10px;font-size:22px;">Novi dokument</h1>
+    <p style="margin:0 0 4px;">${greeting}</p>
+    <p style="margin:0 0 16px;color:#475569;">
+      ${escapeHtml(uploader)} je dodao/la novi dokument u
+      <strong>${escapeHtml(firm)}</strong>:
+    </p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:bold;">${escapeHtml(opts.documentTitle)}</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${opts.documentLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Otvori dokument</a>
+    </div>
+    <p style="margin:0;color:#94a3b8;font-size:12px;">Ako gumb ne radi, otvorite ovaj link:</p>
+    <p style="margin:6px 0 0;color:#94a3b8;font-size:12px;word-break:break-all;">${opts.documentLink}</p>
+  `;
+
+  return sendEmail({
+    to: opts.to,
+    subject: `Novi dokument u ${firm} — Docorex`,
+    html: layout(content, NEW_DOC_FOOTER),
+    text:
+      `${name ? `Pozdrav ${name},` : "Pozdrav,"}\n\n` +
+      `${uploader} je dodao/la novi dokument u ${firm}: ${opts.documentTitle}\n` +
+      `Otvori: ${opts.documentLink}\n`,
+  });
+}
