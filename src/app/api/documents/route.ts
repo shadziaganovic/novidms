@@ -7,6 +7,7 @@ import { ALLOWED_MIME, MAX_FILE_BYTES } from "@/lib/documents";
 import { logAudit } from "@/lib/audit";
 import { processDocumentOcr } from "@/lib/ocr";
 import { autoExtractInvoice } from "@/lib/ai-extract";
+import { loadEntitlement, restrictedMessage } from "@/lib/entitlement";
 
 // OCR — including AI vision OCR for scanned documents — runs in after(), which is
 // bound by the route's max duration. Give it room (Vercel Hobby caps at 60s).
@@ -18,6 +19,15 @@ export async function POST(req: NextRequest) {
   const ctx = await getOptionalTenantContext();
   if (!ctx) {
     return NextResponse.json({ error: "Neautorizirano" }, { status: 401 });
+  }
+
+  // Trial/subscription gate: block new uploads when the firm isn't active.
+  const ent = await loadEntitlement(ctx.tenantId);
+  if (!ent.active) {
+    return NextResponse.json(
+      { error: restrictedMessage(ent.status) },
+      { status: 403 },
+    );
   }
 
   const form = await req.formData();

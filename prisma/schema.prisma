@@ -20,6 +20,11 @@ model Tenant {
   id           String       @id @default(cuid())
   name         String
   plan         Plan         @default(BASIC)
+  // Lifecycle: new self-service firms start as TRIAL with a trialEndsAt 30 days
+  // out. When the trial expires (or status is SUSPENDED) write actions are
+  // blocked; reads stay open. The platform owner flips status from /owner.
+  status       TenantStatus @default(TRIAL)
+  trialEndsAt  DateTime?
   createdAt    DateTime     @default(now())
   users        User[]
   documents    Document[]
@@ -28,16 +33,19 @@ model Tenant {
 }
 
 model User {
-  id         String    @id @default(cuid())
-  tenantId   String
-  tenant     Tenant    @relation(fields: [tenantId], references: [id])
-  email      String    @unique
-  name       String
-  password   String // hash (scrypt)
-  role       Role      @default(MEMBER)
-  invitedAt  DateTime?
-  acceptedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  email         String    @unique
+  name          String
+  password      String // hash (scrypt)
+  role          Role      @default(MEMBER)
+  // Platform owner (super-admin) flag: grants access to the cross-tenant /owner
+  // back-office. NOT tenant-scoped — the only role that may read across firms.
+  platformAdmin Boolean   @default(false)
+  invitedAt     DateTime?
+  acceptedAt    DateTime?
+  createdAt     DateTime  @default(now())
 
   @@index([tenantId])
 }
@@ -115,6 +123,12 @@ enum Plan {
   BASIC
   BUSINESS
   PROFESSIONAL
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
 }
 
 enum Role {

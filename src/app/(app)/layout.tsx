@@ -2,6 +2,9 @@ import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { logout } from "@/app/actions/auth";
+import { tenantIsActive, trialDaysLeft, restrictedMessage } from "@/lib/entitlement";
+
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "info@docorex.com";
 
 export default async function AppLayout({
   children,
@@ -12,13 +15,16 @@ export default async function AppLayout({
   const [user, tenant] = await Promise.all([
     prisma.user.findFirst({
       where: { id: ctx.userId, tenantId: ctx.tenantId },
-      select: { name: true },
+      select: { name: true, platformAdmin: true },
     }),
     prisma.tenant.findUnique({
       where: { id: ctx.tenantId },
-      select: { name: true },
+      select: { name: true, status: true, trialEndsAt: true },
     }),
   ]);
+
+  const active = tenant ? tenantIsActive(tenant) : true;
+  const daysLeft = tenant ? trialDaysLeft(tenant) : null;
 
   return (
     <div className="min-h-screen">
@@ -48,6 +54,14 @@ export default async function AppLayout({
                   </Link>
                 </>
               ) : null}
+              {user?.platformAdmin ? (
+                <Link
+                  href="/owner"
+                  className="font-semibold text-brand-600 hover:underline"
+                >
+                  Vlasnik
+                </Link>
+              ) : null}
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
@@ -62,6 +76,41 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
+
+      {tenant && !active ? (
+        <div className="border-b border-red-200 bg-red-50">
+          <div className="mx-auto max-w-5xl px-4 py-2 text-sm text-red-700">
+            <span className="font-semibold">Pristup je ograničen.</span>{" "}
+            {restrictedMessage(tenant.status)} Pregled, pretraga i izvoz rade;
+            dodavanje dokumenata i pozivanje korisnika su onemogućeni. Pišite na{" "}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="font-semibold underline"
+            >
+              {SUPPORT_EMAIL}
+            </a>
+            .
+          </div>
+        </div>
+      ) : daysLeft != null ? (
+        <div className="border-b border-amber-200 bg-amber-50">
+          <div className="mx-auto max-w-5xl px-4 py-2 text-sm text-amber-800">
+            Probno razdoblje — još{" "}
+            <span className="font-semibold">
+              {daysLeft} {daysLeft === 1 ? "dan" : "dana"}
+            </span>
+            . Za trajnu aktivaciju pišite na{" "}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="font-semibold underline"
+            >
+              {SUPPORT_EMAIL}
+            </a>
+            .
+          </div>
+        </div>
+      ) : null}
+
       <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
     </div>
   );

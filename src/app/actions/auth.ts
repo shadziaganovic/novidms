@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
+import { TRIAL_DAYS } from "@/lib/entitlement";
 
 export type AuthState =
   | { error?: string; fieldErrors?: Record<string, string[] | undefined> }
@@ -39,7 +40,10 @@ export async function registerCompany(
   let tenantId: string;
   try {
     const user = await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({ data: { name: company } });
+      const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      const tenant = await tx.tenant.create({
+        data: { name: company, status: "TRIAL", trialEndsAt },
+      });
       return tx.user.create({
         data: {
           tenantId: tenant.id,
