@@ -95,11 +95,12 @@ function sortOrder(sort?: string, dirIn?: string): Prisma.Sql | null {
 }
 
 export async function findDocuments(
-  opts: DocFilter & { sort?: string; dir?: string },
+  opts: DocFilter & { sort?: string; dir?: string; limit?: number },
 ): Promise<DocRow[]> {
   const q = opts.q?.trim();
   const where = buildWhere(opts);
   const order = sortOrder(opts.sort, opts.dir);
+  const limit = opts.limit ?? 100;
 
   if (q) {
     const orderBy =
@@ -123,7 +124,7 @@ export async function findDocuments(
       LEFT JOIN "CostCenter" cc ON cc.id = d."costCenterId"
       WHERE ${where}
       ORDER BY ${orderBy}
-      LIMIT 100`;
+      LIMIT ${limit}`;
   }
 
   const orderBy = order ?? Prisma.sql`d."createdAt" DESC`;
@@ -140,7 +141,7 @@ export async function findDocuments(
     LEFT JOIN "CostCenter" cc ON cc.id = d."costCenterId"
     WHERE ${where}
     ORDER BY ${orderBy}
-    LIMIT 100`;
+    LIMIT ${limit}`;
 }
 
 /** Distinct years present in a tenant's documents (by PERIOD), newest first. */

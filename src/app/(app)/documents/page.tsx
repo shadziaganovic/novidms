@@ -15,6 +15,11 @@ import { formatDate, formatMoney, formatMonthYear, MONTHS_HR } from "@/lib/forma
 // Number of columns in the table — used for the group header colSpan.
 const COLS = 7;
 
+// Page-size choices for the list. "all" is capped to ALL_LIMIT as a safety net.
+const PER_OPTIONS = ["10", "20", "50", "100", "all"] as const;
+const DEFAULT_PER = "20";
+const ALL_LIMIT = 10000;
+
 type ListParams = {
   sort: string;
   dir: "asc" | "desc";
@@ -24,6 +29,7 @@ type ListParams = {
   year: string;
   month: string;
   group: boolean;
+  per: string;
 };
 
 // Escape HTML, then turn our [[HL]] sentinels into <mark>. Safe to feed into
@@ -47,9 +53,28 @@ function sortHref(col: SortKey, p: ListParams): string {
   if (p.year) sp.set("year", p.year);
   if (p.month) sp.set("month", p.month);
   if (p.group) sp.set("group", "month");
+  if (p.per !== DEFAULT_PER) sp.set("per", p.per);
   sp.set("sort", col);
   sp.set("dir", nextDir);
   return `/documents?${sp.toString()}`;
+}
+
+// Link that changes only the page size, preserving the current filters/sort.
+function perHref(value: string, p: ListParams): string {
+  const sp = new URLSearchParams();
+  if (p.q) sp.set("q", p.q);
+  if (p.cat) sp.set("cat", p.cat);
+  if (p.cc) sp.set("cc", p.cc);
+  if (p.year) sp.set("year", p.year);
+  if (p.month) sp.set("month", p.month);
+  if (p.group) sp.set("group", "month");
+  if (!p.group && p.sort) {
+    sp.set("sort", p.sort);
+    sp.set("dir", p.dir);
+  }
+  if (value !== DEFAULT_PER) sp.set("per", value);
+  const qs = sp.toString();
+  return qs ? `/documents?${qs}` : "/documents";
 }
 
 function SortTh({
@@ -180,6 +205,7 @@ export default async function DocumentsPage({
     group?: string;
     sort?: string;
     dir?: string;
+    per?: string;
   }>;
 }) {
   const ctx = await getTenantContext();
@@ -200,6 +226,11 @@ export default async function DocumentsPage({
   const dir: "asc" | "desc" =
     sp.dir === "asc" ? "asc" : sp.dir === "desc" ? "desc" : grouping ? "desc" : "asc";
 
+  const per = (PER_OPTIONS as readonly string[]).includes(sp.per ?? "")
+    ? (sp.per as string)
+    : DEFAULT_PER;
+  const limit = per === "all" ? ALL_LIMIT : Number(per);
+
   const filter = {
     tenantId: ctx.tenantId,
     q: query,
@@ -210,7 +241,7 @@ export default async function DocumentsPage({
   };
 
   const [rows, totals, categories, costCenters, years] = await Promise.all([
-    findDocuments({ ...filter, sort, dir }),
+    findDocuments({ ...filter, sort, dir, limit }),
     sumDocuments(filter),
     prisma.category.findMany({
       where: { tenantId: ctx.tenantId },
@@ -238,6 +269,7 @@ export default async function DocumentsPage({
     year: yearStr,
     month: monthStr,
     group: grouping,
+    per,
   };
 
   const filtering =
@@ -279,6 +311,9 @@ export default async function DocumentsPage({
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3">
+        {per !== DEFAULT_PER ? (
+          <input type="hidden" name="per" value={per} />
+        ) : null}
         <div className="min-w-[14rem] flex-1">
           <label className="label" htmlFor="q">
             Pretraga po sadržaju
@@ -363,15 +398,36 @@ export default async function DocumentsPage({
         ) : null}
       </form>
 
-      <p className="text-sm text-slate-500">
-        {totals.count} {noun} · Ukupan iznos:{" "}
-        <span className="font-semibold text-slate-700">
-          {formatMoney(totals.total)}
-        </span>
-        {totals.count > rows.length ? (
-          <span className="text-slate-400"> (prikazano prvih {rows.length})</span>
-        ) : null}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+        <p>
+          {rows.length < totals.count
+            ? `Prikazano ${rows.length} od ${totals.count} ${noun}`
+            : `${totals.count} ${noun}`}{" "}
+          · Ukupan iznos:{" "}
+          <span className="font-semibold text-slate-700">
+            {formatMoney(totals.total)}
+          </span>
+        </p>
+        <div className="flex items-center gap-2">
+          <span>Po stranici:</span>
+          {PER_OPTIONS.map((opt) => {
+            const label = opt === "all" ? "Sve" : opt;
+            return per === opt ? (
+              <span key={opt} className="font-semibold text-slate-700">
+                {label}
+              </span>
+            ) : (
+              <Link
+                key={opt}
+                href={perHref(opt, params)}
+                className="hover:text-slate-700 hover:underline"
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
 
       {rows.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">
