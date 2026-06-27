@@ -204,8 +204,6 @@ type PeriodGroup = {
   month: number;
   rows: DocRow[];
   count: number;
-  sum: number;
-  hasAmount: boolean;
 };
 
 // Bucket the (already date-ordered) rows into consecutive year+month groups.
@@ -221,17 +219,11 @@ function groupByPeriod(rows: DocRow[]): PeriodGroup[] {
         month: r.periodMonth,
         rows: [],
         count: 0,
-        sum: 0,
-        hasAmount: false,
       };
       groups.push(g);
     }
     g.rows.push(r);
     g.count += 1;
-    if (r.amount != null) {
-      g.sum += r.amount;
-      g.hasAmount = true;
-    }
   }
   return groups;
 }
@@ -497,11 +489,6 @@ export default async function DocumentsPage({
                           <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
                             · {g.count}
                           </span>
-                          {g.hasAmount ? (
-                            <span className="float-right font-normal normal-case tracking-normal text-slate-500">
-                              {formatMoney(g.sum)}
-                            </span>
-                          ) : null}
                         </td>
                       </tr>
                       {g.rows.map((d) => (
@@ -537,10 +524,7 @@ export default async function DocumentsPage({
           <div>
             Ukupno:{" "}
             <span className="font-semibold text-slate-700">{totals.count}</span>{" "}
-            {noun} ·{" "}
-            <span className="font-semibold text-slate-700">
-              {formatMoney(totals.total)}
-            </span>
+            {noun}
           </div>
           <div className="flex items-center gap-1">
             <PageBtn href={pageHref(1, params)} label="«" disabled={page <= 1} />
