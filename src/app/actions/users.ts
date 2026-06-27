@@ -9,9 +9,17 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, randomPasswordHash } from "@/lib/password";
 import { createSession } from "@/lib/session";
 import { createInviteToken, verifyInviteToken } from "@/lib/invite";
+import { loadEntitlement, restrictedMessage } from "@/lib/entitlement";
+import { sendInviteEmail } from "@/lib/email";
 
 export type UserActionState =
-  | { error?: string; ok?: boolean; inviteLink?: string }
+  | {
+      error?: string;
+      ok?: boolean;
+      inviteLink?: string;
+      emailSent?: boolean;
+      emailTo?: string;
+    }
   | undefined;
 
 const InviteSchema = z.object({
@@ -31,6 +39,9 @@ export async function inviteUser(
 ): Promise<UserActionState> {
   const ctx = await getTenantContext();
   if (ctx.role !== "ADMIN") return { error: "Samo administrator firme." };
+
+  const ent = await loadEntitlement(ctx.tenantId);
+  if (!ent.active) return { error: restrictedMessage(ent.status) };
 
   const parsed = InviteSchema.safeParse({
     email: formData.get("email"),
@@ -54,8 +65,35 @@ export async function inviteUser(
       },
       select: { id: true },
     });
+    const inviteLink = inviteLinkFor(user.id);
+
+    // Email the invite (best-effort). Names make the message friendlier; if the
+    // key isn't configured or sending fails, the UI falls back to the link.
+    const [tenant, inviter] = await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: ctx.tenantId },
+        select: { name: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: ctx.userId },
+        select: { name: true },
+      }),
+    ]);
+    const mail = await sendInviteEmail({
+      to: email,
+      recipientName: parsed.data.name,
+      inviteLink,
+      tenantName: tenant?.name ?? "",
+      inviterName: inviter?.name ?? "",
+    });
+
     revalidatePath("/admin/users");
-    return { ok: true, inviteLink: inviteLinkFor(user.id) };
+    return {
+      ok: true,
+      inviteLink,
+      emailSent: mail.ok && !mail.skipped,
+      emailTo: email,
+    };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return { error: "Korisnik s tim emailom već postoji." };

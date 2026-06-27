@@ -63,8 +63,15 @@ export function InviteUserForm() {
           <span className="text-sm text-red-600">{state.error}</span>
         ) : null}
       </div>
-      {state?.ok && state.inviteLink ? (
-        <InviteLinkBox link={state.inviteLink} />
+      {state?.ok ? (
+        state.emailSent ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+            Pozivnica je poslana na <strong>{state.emailTo}</strong>. Korisnik
+            postavlja lozinku putem linka u emailu.
+          </div>
+        ) : state.inviteLink ? (
+          <InviteLinkBox link={state.inviteLink} />
+        ) : null
       ) : null}
     </form>
   );
