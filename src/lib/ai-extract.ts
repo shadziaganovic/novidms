@@ -9,6 +9,11 @@ import { prisma } from "./prisma";
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
 
+// Vision OCR for scanned documents is latency-sensitive (it runs inside the
+// upload's after() within Vercel's function time limit) and doesn't need a
+// frontier model — default to fast, cheap Haiku. Override with ANTHROPIC_OCR_MODEL.
+const OCR_MODEL = process.env.ANTHROPIC_OCR_MODEL ?? "claude-haiku-4-5";
+
 const InvoiceSchema = z.object({
   partner: z.string().nullable(),
   invoiceNumber: z.string().nullable(),
@@ -85,6 +90,65 @@ export async function extractInvoiceData(
 
   const parsed = InvoiceSchema.safeParse(JSON.parse(json));
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Transcribe a scanned PDF or a photo/image into plain text using the model's
+ * vision. This is the OCR path for PDFs without a real text layer (scans) and
+ * for image uploads — far more accurate on receipts than local tesseract.
+ * Best-effort: returns "" if AI isn't configured or on any error (never throws),
+ * so OCR degrades gracefully instead of breaking the upload.
+ */
+export async function aiReadDocumentText(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) return "";
+
+  const isPdf = mimeType === "application/pdf";
+  const isImage = mimeType === "image/png" || mimeType === "image/jpeg";
+  if (!isPdf && !isImage) return "";
+
+  try {
+    const client = new Anthropic();
+    const data = buffer.toString("base64");
+    const block = isPdf
+      ? {
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data },
+        }
+      : {
+          type: "image",
+          source: { type: "base64", media_type: mimeType, data },
+        };
+
+    const response = await client.messages.create({
+      model: OCR_MODEL,
+      max_tokens: 8192,
+      system:
+        "Ti si OCR motor. Iz priloženog dokumenta prepiši SAV vidljivi tekst, " +
+        "točno i potpuno (brojevi, datumi, iznosi, nazivi tvrtki, OIB-i). Zadrži " +
+        "redoslijed čitanja. Ne dodaj komentare ni objašnjenja — vrati isključivo " +
+        "prepisani tekst.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            block,
+            { type: "text", text: "Prepiši sav tekst iz dokumenta." },
+          ],
+        },
+      ],
+    } as unknown as Anthropic.MessageCreateParamsNonStreaming);
+
+    const textBlock = response.content.find(
+      (b): b is Anthropic.TextBlock => b.type === "text",
+    );
+    return (textBlock?.text ?? "").trim();
+  } catch (e) {
+    console.error("AI OCR (vision) neuspješan:", e);
+    return "";
+  }
 }
 
 export interface InvoiceUpdate {

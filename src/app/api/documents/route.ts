@@ -8,6 +8,10 @@ import { logAudit } from "@/lib/audit";
 import { processDocumentOcr } from "@/lib/ocr";
 import { autoExtractInvoice } from "@/lib/ai-extract";
 
+// OCR — including AI vision OCR for scanned documents — runs in after(), which is
+// bound by the route's max duration. Give it room (Vercel Hobby caps at 60s).
+export const maxDuration = 60;
+
 // Upload a document. Auth + tenant scoping are enforced here (defense in depth,
 // in addition to proxy). OCR runs asynchronously after the response is sent.
 export async function POST(req: NextRequest) {

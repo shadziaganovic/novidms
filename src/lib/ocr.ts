@@ -3,14 +3,18 @@ import mammoth from "mammoth";
 import { extractText as unpdfExtractText, getDocumentProxy } from "unpdf";
 import { prisma } from "./prisma";
 import { storageGet } from "./storage";
+import { aiReadDocumentText } from "./ai-extract";
 
-// OCR / text-extraction abstraction:
-//   - DOCX  → mammoth (reads the embedded text directly)
-//   - PDF   → unpdf (extracts the PDF text layer; serverless-friendly, no native deps)
-//   - PNG/JPG → tesseract.js (real OCR), languages from OCR_LANGS (e.g. "hrv+eng")
-//
-// Note: scanned PDFs without a text layer yield little/no text here. Rasterise+
-// OCR for such PDFs can be added later behind this same function.
+// OCR / text-extraction abstraction. Local extraction runs FIRST (free + fast);
+// AI vision is only a FALLBACK when local OCR can't read the document:
+//   - DOCX    → mammoth (embedded text)
+//   - PDF     → unpdf text layer; if empty (scanned PDF) → AI vision OCR
+//   - PNG/JPG → tesseract.js (OCR_LANGS, e.g. "hrv+eng"); if it reads ~nothing → AI vision OCR
+// The AI fallback no-ops when ANTHROPIC_API_KEY isn't set, so OCR degrades safely.
+
+// Below this many characters, local OCR output is treated as effectively empty
+// and we fall back to AI vision (covers scanned PDFs and images tesseract can't read).
+const MIN_OCR_CHARS = 20;
 
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -22,7 +26,7 @@ export async function extractText(
   if (mimeType === "application/pdf") return extractPdf(buffer);
   if (mimeType === DOCX_MIME) return extractDocx(buffer);
   if (mimeType === "image/png" || mimeType === "image/jpeg") {
-    return extractImage(buffer);
+    return extractImage(buffer, mimeType);
   }
   return "";
 }
@@ -30,7 +34,12 @@ export async function extractText(
 async function extractPdf(buffer: Buffer): Promise<string> {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await unpdfExtractText(pdf, { mergePages: true });
-  return Array.isArray(text) ? text.join("\n") : text;
+  const layer = (Array.isArray(text) ? text.join("\n") : text).trim();
+  // Digital PDFs carry a real text layer — use it (fast, free). Scanned/image-only
+  // PDFs don't, so fall back to AI vision to actually read the page content.
+  if (layer.length >= MIN_OCR_CHARS) return layer;
+  const aiText = await aiReadDocumentText(buffer, "application/pdf");
+  return aiText || layer;
 }
 
 async function extractDocx(buffer: Buffer): Promise<string> {
@@ -38,8 +47,17 @@ async function extractDocx(buffer: Buffer): Promise<string> {
   return value;
 }
 
-async function extractImage(buffer: Buffer): Promise<string> {
-  // Imported lazily so the (heavy) OCR engine only loads for image uploads.
+async function extractImage(buffer: Buffer, mimeType: string): Promise<string> {
+  // Local OCR first (free, handles most images). Fall back to AI vision only when
+  // tesseract reads (next to) nothing — e.g. a low-quality photo or odd layout.
+  const local = (await tesseractOcr(buffer)).trim();
+  if (local.length >= MIN_OCR_CHARS) return local;
+  const aiText = await aiReadDocumentText(buffer, mimeType);
+  return aiText || local;
+}
+
+async function tesseractOcr(buffer: Buffer): Promise<string> {
+  // Imported lazily so the (heavy) OCR engine only loads when actually needed.
   const { createWorker } = await import("tesseract.js");
   const langs = process.env.OCR_LANGS ?? "eng";
   const worker = await createWorker(langs);
