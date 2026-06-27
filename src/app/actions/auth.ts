@@ -7,6 +7,13 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
 import { TRIAL_DAYS } from "@/lib/entitlement";
+import { getTenantContext } from "@/lib/tenant";
+import {
+  createResetToken,
+  verifyResetToken,
+  decodeResetUserId,
+} from "@/lib/reset";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 export type AuthState =
   | { error?: string; fieldErrors?: Record<string, string[] | undefined> }
@@ -115,4 +122,102 @@ export async function login(
 export async function logout(): Promise<void> {
   await destroySession();
   redirect("/login");
+}
+
+// ---------------------------------------------------------------------------
+// Password: forgot/reset via email + change (logged-in)
+// ---------------------------------------------------------------------------
+
+export type PasswordState = { error?: string; ok?: boolean } | undefined;
+
+const ForgotSchema = z.object({
+  email: z.string().trim().email("Neispravan email."),
+});
+
+/**
+ * Start a password reset: emails a reset link if the account exists & is active.
+ * Always returns a generic success — never reveals whether the email exists.
+ */
+export async function requestPasswordReset(
+  _prev: PasswordState,
+  formData: FormData,
+): Promise<PasswordState> {
+  const parsed = ForgotSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neispravan email." };
+  }
+  const email = parsed.data.email.toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user && user.acceptedAt) {
+    const token = createResetToken(user.id, user.password);
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    await sendPasswordResetEmail({
+      to: user.email,
+      recipientName: user.name,
+      resetLink: `${base}/reset-password/${token}`,
+    });
+  }
+  return { ok: true };
+}
+
+const ResetSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8, "Lozinka mora imati barem 8 znakova."),
+});
+
+/** Complete a password reset using the emailed token. */
+export async function resetPassword(
+  _prev: PasswordState,
+  formData: FormData,
+): Promise<PasswordState> {
+  const parsed = ResetSchema.safeParse({
+    token: formData.get("token"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neispravni podaci." };
+  }
+  const uid = decodeResetUserId(parsed.data.token);
+  const user = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+  // Token is bound to the current password hash → single-use (dies after reset).
+  if (!user || !verifyResetToken(parsed.data.token, user.password)) {
+    return { error: "Poveznica je neispravna ili je istekla. Zatražite novu." };
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashPassword(parsed.data.password),
+      acceptedAt: user.acceptedAt ?? new Date(),
+    },
+  });
+  redirect("/login?reset=1");
+}
+
+const ChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Unesite trenutnu lozinku."),
+  newPassword: z.string().min(8, "Nova lozinka mora imati barem 8 znakova."),
+});
+
+/** Change the password of the logged-in user (requires the current password). */
+export async function changePassword(
+  _prev: PasswordState,
+  formData: FormData,
+): Promise<PasswordState> {
+  const ctx = await getTenantContext();
+  const parsed = ChangeSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    newPassword: formData.get("newPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neispravni podaci." };
+  }
+  const user = await prisma.user.findUnique({ where: { id: ctx.userId } });
+  if (!user || !verifyPassword(parsed.data.currentPassword, user.password)) {
+    return { error: "Trenutna lozinka nije točna." };
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { password: hashPassword(parsed.data.newPassword) },
+  });
+  return { ok: true };
 }

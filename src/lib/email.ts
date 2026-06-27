@@ -107,3 +107,41 @@ export async function sendInviteEmail(opts: {
       `Postavite lozinku putem ovog linka:\n${opts.inviteLink}\n`,
   });
 }
+
+const RESET_FOOTER =
+  "Ovaj email poslan je jer je zatražena promjena lozinke za vaš Docorex račun. Ako to niste bili vi, slobodno ga zanemarite — lozinka ostaje nepromijenjena.";
+
+/** Password reset email: user sets a new password via a 1-hour link. */
+export async function sendPasswordResetEmail(opts: {
+  to: string;
+  recipientName: string;
+  resetLink: string;
+}): Promise<SendResult> {
+  const name = opts.recipientName.trim();
+  const greeting = name ? `Pozdrav ${escapeHtml(name)},` : "Pozdrav,";
+
+  const content = `
+    <h1 style="margin:0 0 10px;font-size:22px;">Promjena lozinke</h1>
+    <p style="margin:0 0 4px;">${greeting}</p>
+    <p style="margin:0 0 16px;color:#475569;">
+      Zatražena je promjena lozinke za vaš Docorex račun. Kliknite gumb ispod da
+      postavite novu lozinku. Poveznica vrijedi <strong>1 sat</strong>.
+    </p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${opts.resetLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Postavi novu lozinku</a>
+    </div>
+    <p style="margin:0;color:#94a3b8;font-size:12px;">Ako gumb ne radi, otvorite ovaj link:</p>
+    <p style="margin:6px 0 0;color:#94a3b8;font-size:12px;word-break:break-all;">${opts.resetLink}</p>
+  `;
+
+  return sendEmail({
+    to: opts.to,
+    subject: "Promjena lozinke — Docorex",
+    html: layout(content, RESET_FOOTER),
+    text:
+      `${name ? `Pozdrav ${name},` : "Pozdrav,"}\n\n` +
+      `Zatražena je promjena lozinke za vaš Docorex račun.\n` +
+      `Postavite novu lozinku (poveznica vrijedi 1 sat):\n${opts.resetLink}\n\n` +
+      `Ako to niste bili vi, zanemarite ovaj email.\n`,
+  });
+}

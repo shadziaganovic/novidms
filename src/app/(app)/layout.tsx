@@ -65,9 +65,12 @@ export default async function AppLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-slate-500 sm:inline">
+            <Link
+              href="/account"
+              className="hidden text-slate-500 hover:text-brand-600 sm:inline"
+            >
               {user?.name} · {tenant?.name}
-            </span>
+            </Link>
             <form action={logout}>
               <button type="submit" className="btn-ghost btn-sm">
                 Odjava
