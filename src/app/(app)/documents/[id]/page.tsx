@@ -8,8 +8,13 @@ import { StatusPill } from "@/components/StatusPill";
 import { DocumentMetaForm } from "@/components/DocumentMetaForm";
 import { DeleteDocumentButton } from "@/components/DeleteDocumentButton";
 import { AiExtractButton } from "@/components/AiExtractButton";
+import { ReprocessOcrButton } from "@/components/ReprocessOcrButton";
 import { formatBytes, ALLOWED_MIME } from "@/lib/documents";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+
+// "Ponovi OCR" re-runs OCR (incl. AI vision for scans) synchronously, which can
+// take tens of seconds — give the route headroom (Vercel Hobby caps at 60s).
+export const maxDuration = 60;
 
 const AUDIT_LABEL: Record<string, string> = {
   UPLOAD: "Dodano",
@@ -206,9 +211,12 @@ export default async function DocumentDetailPage({
 
         {/* OCR text */}
         <div className="card p-5 lg:col-span-2">
-          <h2 className="mb-2 text-sm font-semibold uppercase text-slate-500">
-            Prepoznati tekst (OCR)
-          </h2>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">
+              Prepoznati tekst (OCR)
+            </h2>
+            {ctx.role === "ADMIN" ? <ReprocessOcrButton id={doc.id} /> : null}
+          </div>
           {doc.ocrStatus === "DONE" && doc.ocrText ? (
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
               {doc.ocrText}
