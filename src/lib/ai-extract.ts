@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { prisma } from "./prisma";
 
 // AI extraction of invoice fields from a document's OCR text, via the Anthropic
 // API (structured output). Model is env-overridable; default is the most capable
@@ -84,4 +85,101 @@ export async function extractInvoiceData(
 
   const parsed = InvoiceSchema.safeParse(JSON.parse(json));
   return parsed.success ? parsed.data : null;
+}
+
+export interface InvoiceUpdate {
+  partner?: string;
+  invoiceNumber?: string;
+  amount?: number;
+  documentDate?: Date;
+  dueDate?: Date;
+}
+
+/** Map extracted data → a Prisma update object + the list of filled field labels. */
+export function buildInvoiceUpdate(data: ExtractedInvoice): {
+  update: InvoiceUpdate;
+  filled: string[];
+} {
+  const update: InvoiceUpdate = {};
+  const filled: string[] = [];
+
+  if (data.partner?.trim()) {
+    update.partner = data.partner.trim();
+    filled.push("partner");
+  }
+  if (data.invoiceNumber?.trim()) {
+    update.invoiceNumber = data.invoiceNumber.trim();
+    filled.push("broj računa");
+  }
+  if (
+    typeof data.amount === "number" &&
+    Number.isFinite(data.amount) &&
+    data.amount >= 0
+  ) {
+    update.amount = Math.round(data.amount * 100) / 100;
+    filled.push("iznos");
+  }
+  if (data.documentDate) {
+    const d = new Date(data.documentDate);
+    if (!Number.isNaN(d.getTime())) {
+      update.documentDate = d;
+      filled.push("datum");
+    }
+  }
+  if (data.dueDate) {
+    const d = new Date(data.dueDate);
+    if (!Number.isNaN(d.getTime())) {
+      update.dueDate = d;
+      filled.push("dospijeće");
+    }
+  }
+  return { update, filled };
+}
+
+/**
+ * Best-effort automatic extraction after OCR (called from the upload's after()).
+ * No-throw: never breaks upload/OCR. Skips silently if AI isn't configured.
+ */
+export async function autoExtractInvoice(
+  documentId: string,
+  tenantId: string,
+): Promise<void> {
+  if (!process.env.ANTHROPIC_API_KEY) return;
+  try {
+    const doc = await prisma.document.findFirst({
+      where: { id: documentId, tenantId },
+      select: {
+        ocrText: true,
+        ocrStatus: true,
+        partner: true,
+        invoiceNumber: true,
+        amount: true,
+        documentDate: true,
+        dueDate: true,
+      },
+    });
+    if (!doc || doc.ocrStatus !== "DONE" || !doc.ocrText?.trim()) return;
+
+    const data = await extractInvoiceData(doc.ocrText);
+    if (!data) return;
+
+    const { update } = buildInvoiceUpdate(data);
+
+    // Only fill fields that are still empty — never overwrite existing values
+    // (e.g. anything the uploader set by hand, or a previous extraction).
+    if (doc.partner) delete update.partner;
+    if (doc.invoiceNumber) delete update.invoiceNumber;
+    if (doc.amount !== null) delete update.amount;
+    if (doc.documentDate) delete update.documentDate;
+    if (doc.dueDate) delete update.dueDate;
+
+    if (Object.keys(update).length === 0) return;
+
+    await prisma.document.updateMany({
+      where: { id: documentId, tenantId },
+      data: update,
+    });
+  } catch (e) {
+    console.error("Auto AI extraction failed:", e);
+  }
 }

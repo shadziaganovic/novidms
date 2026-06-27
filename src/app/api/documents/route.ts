@@ -6,6 +6,7 @@ import { storagePut, buildStorageKey } from "@/lib/storage";
 import { ALLOWED_MIME, MAX_FILE_BYTES } from "@/lib/documents";
 import { logAudit } from "@/lib/audit";
 import { processDocumentOcr } from "@/lib/ocr";
+import { autoExtractInvoice } from "@/lib/ai-extract";
 
 // Upload a document. Auth + tenant scoping are enforced here (defense in depth,
 // in addition to proxy). OCR runs asynchronously after the response is sent.
@@ -81,8 +82,12 @@ export async function POST(req: NextRequest) {
     action: "UPLOAD",
   });
 
-  // Run OCR after the response is sent so the upload returns immediately.
-  after(() => processDocumentOcr(doc.id));
+  // After the response is sent: run OCR, then best-effort AI invoice extraction
+  // (auto-fills empty metadata; no-ops if ANTHROPIC_API_KEY isn't set).
+  after(async () => {
+    await processDocumentOcr(doc.id);
+    await autoExtractInvoice(doc.id, ctx.tenantId);
+  });
 
   return NextResponse.json({ id: doc.id }, { status: 201 });
 }
