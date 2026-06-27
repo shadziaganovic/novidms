@@ -2,6 +2,11 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
+// COALESCE of the document date with the upload date — the effective "period" a
+// document belongs to. Defined once so date sorting, the year/month filter and
+// month grouping all bucket documents identically.
+const PERIOD = Prisma.sql`COALESCE(d."documentDate", d."createdAt")`;
+
 // Tenant-scoped document listing + full-text search + filters + sorting + sums.
 //
 // Search uses the generated `searchVector` (tsvector over title + ocrText +
@@ -20,6 +25,8 @@ export interface DocRow {
   ocrStatus: string;
   sizeBytes: number;
   createdAt: Date;
+  periodYear: number;
+  periodMonth: number;
   categoryName: string | null;
   costCenterName: string | null;
   costCenterCode: string | null;
@@ -41,6 +48,8 @@ export interface DocFilter {
   q?: string;
   categoryId?: string;
   costCenterId?: string;
+  year?: number;
+  month?: number;
 }
 
 const HEADLINE_OPTS =
@@ -53,7 +62,9 @@ function buildWhere(f: DocFilter): Prisma.Sql {
   return Prisma.sql`d."tenantId" = ${f.tenantId}
     ${q ? Prisma.sql`AND d."searchVector" @@ plainto_tsquery('simple', ${q})` : Prisma.empty}
     ${f.categoryId ? Prisma.sql`AND d."categoryId" = ${f.categoryId}` : Prisma.empty}
-    ${f.costCenterId ? Prisma.sql`AND d."costCenterId" = ${f.costCenterId}` : Prisma.empty}`;
+    ${f.costCenterId ? Prisma.sql`AND d."costCenterId" = ${f.costCenterId}` : Prisma.empty}
+    ${f.year ? Prisma.sql`AND EXTRACT(YEAR FROM ${PERIOD})::int = ${f.year}` : Prisma.empty}
+    ${f.month ? Prisma.sql`AND EXTRACT(MONTH FROM ${PERIOD})::int = ${f.month}` : Prisma.empty}`;
 }
 
 // Whitelisted ORDER BY fragments (no user input is interpolated as SQL). Returns
@@ -73,7 +84,7 @@ function sortOrder(sort?: string, dirIn?: string): Prisma.Sql | null {
     case "amount":
       return Prisma.sql`d.amount ${dir} NULLS LAST, ${tie}`;
     case "date":
-      return Prisma.sql`COALESCE(d."documentDate", d."createdAt") ${dir}, ${tie}`;
+      return Prisma.sql`${PERIOD} ${dir}, ${tie}`;
     case "size":
       return Prisma.sql`d."sizeBytes" ${dir}, ${tie}`;
     case "status":
@@ -100,6 +111,8 @@ export async function findDocuments(
                'StartSel=[[HL]],StopSel=[[/HL]],HighlightAll=true') AS "titleHL",
              d.partner, d."amount"::float8 AS amount, d."documentDate",
              d."ocrStatus"::text AS "ocrStatus", d."sizeBytes", d."createdAt",
+             EXTRACT(YEAR FROM ${PERIOD})::int AS "periodYear",
+             EXTRACT(MONTH FROM ${PERIOD})::int AS "periodMonth",
              c.name AS "categoryName",
              cc.name AS "costCenterName", cc.code AS "costCenterCode",
              ts_headline('simple',
@@ -118,6 +131,8 @@ export async function findDocuments(
     SELECT d.id, d.title, NULL::text AS "titleHL", d.partner,
            d."amount"::float8 AS amount, d."documentDate",
            d."ocrStatus"::text AS "ocrStatus", d."sizeBytes", d."createdAt",
+           EXTRACT(YEAR FROM ${PERIOD})::int AS "periodYear",
+           EXTRACT(MONTH FROM ${PERIOD})::int AS "periodMonth",
            c.name AS "categoryName", cc.name AS "costCenterName",
            cc.code AS "costCenterCode", NULL::text AS snippet
     FROM "Document" d
@@ -126,6 +141,16 @@ export async function findDocuments(
     WHERE ${where}
     ORDER BY ${orderBy}
     LIMIT 100`;
+}
+
+/** Distinct years present in a tenant's documents (by PERIOD), newest first. */
+export async function listDocumentYears(tenantId: string): Promise<number[]> {
+  const rows = await prisma.$queryRaw<{ year: number }[]>`
+    SELECT DISTINCT EXTRACT(YEAR FROM ${PERIOD})::int AS year
+    FROM "Document" d
+    WHERE d."tenantId" = ${tenantId}
+    ORDER BY year DESC`;
+  return rows.map((r) => r.year);
 }
 
 /** Total amount + document count for the same filter (across ALL matches). */

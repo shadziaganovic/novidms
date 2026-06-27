@@ -23,6 +23,18 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   });
 }
 
+/** Croatian month names (nominative, capitalised). Index with month-1 (1-12). */
+export const MONTHS_HR = [
+  "Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj",
+  "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac",
+] as const;
+
+/** Format a year + month (1-12) as a section label, e.g. (2026, 6) → "Lipanj 2026". */
+export function formatMonthYear(year: number, month: number): string {
+  const name = MONTHS_HR[month - 1];
+  return name ? `${name} ${year}` : String(year);
+}
+
 /** Format an amount as EUR (hr-HR), e.g. 1234.5 → "1.234,50 €". */
 export function formatMoney(
   value: number | string | null | undefined,

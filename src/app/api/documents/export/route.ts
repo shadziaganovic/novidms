@@ -20,11 +20,15 @@ export async function GET(req: NextRequest) {
   }
 
   const sp = req.nextUrl.searchParams;
+  const year = Number(sp.get("year")) || undefined;
+  const month = Number(sp.get("month")) || undefined;
   const rows = await listDocumentsForExport({
     tenantId: ctx.tenantId,
     q: sp.get("q") ?? undefined,
     categoryId: sp.get("cat") ?? undefined,
     costCenterId: sp.get("cc") ?? undefined,
+    year,
+    month,
   });
 
   const wb = new ExcelJS.Workbook();

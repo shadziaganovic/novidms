@@ -1,10 +1,30 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { findDocuments, sumDocuments, type SortKey } from "@/lib/document-list";
+import {
+  findDocuments,
+  sumDocuments,
+  listDocumentYears,
+  type SortKey,
+  type DocRow,
+} from "@/lib/document-list";
 import { StatusPill } from "@/components/StatusPill";
-import { formatBytes } from "@/lib/documents";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatMonthYear, MONTHS_HR } from "@/lib/format";
+
+// Number of columns in the table — used for the group header colSpan.
+const COLS = 7;
+
+type ListParams = {
+  sort: string;
+  dir: "asc" | "desc";
+  q: string;
+  cat: string;
+  cc: string;
+  year: string;
+  month: string;
+  group: boolean;
+};
 
 // Escape HTML, then turn our [[HL]] sentinels into <mark>. Safe to feed into
 // dangerouslySetInnerHTML — document content is escaped, only <mark> survives.
@@ -18,49 +38,43 @@ function highlight(value: string): string {
     .replaceAll("[[/HL]]", "</mark>");
 }
 
-function sortHref(
-  col: SortKey,
-  sort: string,
-  dir: string,
-  q: string,
-  cat: string,
-  cc: string,
-): string {
-  const nextDir = sort === col && dir === "asc" ? "desc" : "asc";
-  const p = new URLSearchParams();
-  if (q) p.set("q", q);
-  if (cat) p.set("cat", cat);
-  if (cc) p.set("cc", cc);
-  p.set("sort", col);
-  p.set("dir", nextDir);
-  return `/documents?${p.toString()}`;
+function sortHref(col: SortKey, p: ListParams): string {
+  const nextDir = p.sort === col && p.dir === "asc" ? "desc" : "asc";
+  const sp = new URLSearchParams();
+  if (p.q) sp.set("q", p.q);
+  if (p.cat) sp.set("cat", p.cat);
+  if (p.cc) sp.set("cc", p.cc);
+  if (p.year) sp.set("year", p.year);
+  if (p.month) sp.set("month", p.month);
+  if (p.group) sp.set("group", "month");
+  sp.set("sort", col);
+  sp.set("dir", nextDir);
+  return `/documents?${sp.toString()}`;
 }
 
 function SortTh({
   col,
   label,
-  sort,
-  dir,
-  q,
-  cat,
-  cc,
+  params,
+  disabled = false,
   align = "left",
 }: {
   col: SortKey;
   label: string;
-  sort: string;
-  dir: string;
-  q: string;
-  cat: string;
-  cc: string;
+  params: ListParams;
+  disabled?: boolean;
   align?: "left" | "right";
 }) {
-  const active = sort === col;
-  const arrow = !active ? "↕" : dir === "asc" ? "▲" : "▼";
+  const cls = `px-4 py-3 font-medium ${align === "right" ? "text-right" : ""}`;
+  if (disabled) {
+    return <th className={cls}>{label}</th>;
+  }
+  const active = params.sort === col;
+  const arrow = !active ? "↕" : params.dir === "asc" ? "▲" : "▼";
   return (
-    <th className={`px-4 py-3 font-medium ${align === "right" ? "text-right" : ""}`}>
+    <th className={cls}>
       <Link
-        href={sortHref(col, sort, dir, q, cat, cc)}
+        href={sortHref(col, params)}
         className={`inline-flex items-center gap-1 hover:text-slate-700 ${
           active ? "text-slate-700" : ""
         }`}
@@ -72,6 +86,88 @@ function SortTh({
   );
 }
 
+// One document row, reused by the flat and the month-grouped rendering.
+function DocumentRow({ d, query }: { d: DocRow; query: string }) {
+  return (
+    <tr className="align-top hover:bg-slate-50">
+      <td className="px-4 py-3">
+        <Link
+          href={`/documents/${d.id}`}
+          className="font-medium text-brand-700 hover:underline"
+        >
+          {query && d.titleHL ? (
+            <span dangerouslySetInnerHTML={{ __html: highlight(d.titleHL) }} />
+          ) : (
+            d.title
+          )}
+        </Link>
+        {query && d.snippet ? (
+          <p
+            className="mt-1 text-xs text-slate-500"
+            dangerouslySetInnerHTML={{ __html: highlight(d.snippet) }}
+          />
+        ) : null}
+      </td>
+      <td className="px-4 py-3 text-slate-600">{d.categoryName ?? "—"}</td>
+      <td className="px-4 py-3 text-slate-600">
+        {d.costCenterName
+          ? d.costCenterCode
+            ? `${d.costCenterCode} · ${d.costCenterName}`
+            : d.costCenterName
+          : "—"}
+      </td>
+      <td className="px-4 py-3 text-slate-600">{d.partner ?? "—"}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+        {d.amount != null ? formatMoney(d.amount) : "—"}
+      </td>
+      <td className="px-4 py-3 text-slate-600">
+        {formatDate(d.documentDate ?? d.createdAt)}
+      </td>
+      <td className="px-4 py-3">
+        <StatusPill status={d.ocrStatus} />
+      </td>
+    </tr>
+  );
+}
+
+type PeriodGroup = {
+  key: string;
+  year: number;
+  month: number;
+  rows: DocRow[];
+  count: number;
+  sum: number;
+  hasAmount: boolean;
+};
+
+// Bucket the (already date-ordered) rows into consecutive year+month groups.
+function groupByPeriod(rows: DocRow[]): PeriodGroup[] {
+  const groups: PeriodGroup[] = [];
+  for (const r of rows) {
+    const key = `${r.periodYear}-${r.periodMonth}`;
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== key) {
+      g = {
+        key,
+        year: r.periodYear,
+        month: r.periodMonth,
+        rows: [],
+        count: 0,
+        sum: 0,
+        hasAmount: false,
+      };
+      groups.push(g);
+    }
+    g.rows.push(r);
+    g.count += 1;
+    if (r.amount != null) {
+      g.sum += r.amount;
+      g.hasAmount = true;
+    }
+  }
+  return groups;
+}
+
 export default async function DocumentsPage({
   searchParams,
 }: {
@@ -79,6 +175,9 @@ export default async function DocumentsPage({
     q?: string;
     cat?: string;
     cc?: string;
+    year?: string;
+    month?: string;
+    group?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -88,11 +187,29 @@ export default async function DocumentsPage({
   const query = sp.q?.trim() ?? "";
   const categoryId = sp.cat || undefined;
   const costCenterId = sp.cc || undefined;
-  const sort = sp.sort ?? "";
-  const dir = sp.dir === "desc" ? "desc" : "asc";
-  const filter = { tenantId: ctx.tenantId, q: query, categoryId, costCenterId };
+  const yearNum = Number(sp.year) || undefined;
+  const monthRaw = Number(sp.month);
+  const monthNum =
+    Number.isInteger(monthRaw) && monthRaw >= 1 && monthRaw <= 12
+      ? monthRaw
+      : undefined;
+  const grouping = sp.group === "month";
+  // While grouping, ordering is forced to the document period (newest first by
+  // default) so consecutive rows share a month; column sorting is disabled.
+  const sort = grouping ? "date" : sp.sort ?? "";
+  const dir: "asc" | "desc" =
+    sp.dir === "asc" ? "asc" : sp.dir === "desc" ? "desc" : grouping ? "desc" : "asc";
 
-  const [rows, totals, categories, costCenters] = await Promise.all([
+  const filter = {
+    tenantId: ctx.tenantId,
+    q: query,
+    categoryId,
+    costCenterId,
+    year: yearNum,
+    month: monthNum,
+  };
+
+  const [rows, totals, categories, costCenters, years] = await Promise.all([
     findDocuments({ ...filter, sort, dir }),
     sumDocuments(filter),
     prisma.category.findMany({
@@ -105,17 +222,45 @@ export default async function DocumentsPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, code: true },
     }),
+    listDocumentYears(ctx.tenantId),
   ]);
 
   const cat = sp.cat ?? "";
   const cc = sp.cc ?? "";
-  const filtering = query.length > 0 || !!categoryId || !!costCenterId;
-  const noun = totals.count === 1 ? (filtering ? "rezultat" : "dokument") : filtering ? "rezultata" : "dokumenata";
+  const yearStr = yearNum ? String(yearNum) : "";
+  const monthStr = monthNum ? String(monthNum) : "";
+  const params: ListParams = {
+    sort,
+    dir,
+    q: query,
+    cat,
+    cc,
+    year: yearStr,
+    month: monthStr,
+    group: grouping,
+  };
+
+  const filtering =
+    query.length > 0 ||
+    !!categoryId ||
+    !!costCenterId ||
+    !!yearNum ||
+    !!monthNum;
+  const noun =
+    totals.count === 1
+      ? filtering
+        ? "rezultat"
+        : "dokument"
+      : filtering
+        ? "rezultata"
+        : "dokumenata";
 
   const exportParams = new URLSearchParams();
   if (query) exportParams.set("q", query);
   if (cat) exportParams.set("cat", cat);
   if (cc) exportParams.set("cc", cc);
+  if (yearStr) exportParams.set("year", yearStr);
+  if (monthStr) exportParams.set("month", monthStr);
   const exportQs = exportParams.toString();
   const exportHref = `/api/documents/export${exportQs ? `?${exportQs}` : ""}`;
 
@@ -172,10 +317,46 @@ export default async function DocumentsPage({
             ))}
           </select>
         </div>
+        <div>
+          <label className="label" htmlFor="year">
+            Godina
+          </label>
+          <select id="year" name="year" defaultValue={yearStr} className="input">
+            <option value="">Sve godine</option>
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="month">
+            Mjesec
+          </label>
+          <select id="month" name="month" defaultValue={monthStr} className="input">
+            <option value="">Svi mjeseci</option>
+            {MONTHS_HR.map((name, i) => (
+              <option key={i} value={i + 1}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            name="group"
+            value="month"
+            defaultChecked={grouping}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Grupiraj po mjesecu
+        </label>
         <button type="submit" className="btn-primary">
           Traži
         </button>
-        {filtering ? (
+        {filtering || grouping ? (
           <Link href="/documents" className="btn-ghost">
             Očisti
           </Link>
@@ -213,66 +394,43 @@ export default async function DocumentsPage({
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <SortTh col="title" label="Naziv" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="category" label="Kategorija" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="costcenter" label="Troškovni centar" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="partner" label="Partner" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="amount" label="Iznos" sort={sort} dir={dir} q={query} cat={cat} cc={cc} align="right" />
-                <SortTh col="date" label="Datum" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
-                <SortTh col="status" label="Status" sort={sort} dir={dir} q={query} cat={cat} cc={cc} />
+                <SortTh col="title" label="Naziv" params={params} disabled={grouping} />
+                <SortTh col="category" label="Kategorija" params={params} disabled={grouping} />
+                <SortTh col="costcenter" label="Troškovni centar" params={params} disabled={grouping} />
+                <SortTh col="partner" label="Partner" params={params} disabled={grouping} />
+                <SortTh col="amount" label="Iznos" params={params} disabled={grouping} align="right" />
+                <SortTh col="date" label="Datum" params={params} />
+                <SortTh col="status" label="Status" params={params} disabled={grouping} />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((d) => (
-                <tr key={d.id} className="align-top hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/documents/${d.id}`}
-                      className="font-medium text-brand-700 hover:underline"
-                    >
-                      {query && d.titleHL ? (
-                        <span
-                          dangerouslySetInnerHTML={{
-                            __html: highlight(d.titleHL),
-                          }}
-                        />
-                      ) : (
-                        d.title
-                      )}
-                    </Link>
-                    {query && d.snippet ? (
-                      <p
-                        className="mt-1 text-xs text-slate-500"
-                        dangerouslySetInnerHTML={{
-                          __html: highlight(d.snippet),
-                        }}
-                      />
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {d.categoryName ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {d.costCenterName
-                      ? d.costCenterCode
-                        ? `${d.costCenterCode} · ${d.costCenterName}`
-                        : d.costCenterName
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {d.partner ?? "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
-                    {d.amount != null ? formatMoney(d.amount) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatDate(d.documentDate ?? d.createdAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusPill status={d.ocrStatus} />
-                  </td>
-                </tr>
-              ))}
+              {grouping
+                ? groupByPeriod(rows).map((g) => (
+                    <Fragment key={g.key}>
+                      <tr className="bg-slate-100/70">
+                        <td
+                          colSpan={COLS}
+                          className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          {formatMonthYear(g.year, g.month)}
+                          <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
+                            · {g.count}
+                          </span>
+                          {g.hasAmount ? (
+                            <span className="float-right font-normal normal-case tracking-normal text-slate-500">
+                              {formatMoney(g.sum)}
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                      {g.rows.map((d) => (
+                        <DocumentRow key={d.id} d={d} query={query} />
+                      ))}
+                    </Fragment>
+                  ))
+                : rows.map((d) => (
+                    <DocumentRow key={d.id} d={d} query={query} />
+                  ))}
             </tbody>
           </table>
         </div>
