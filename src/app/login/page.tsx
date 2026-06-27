@@ -16,7 +16,7 @@ export default async function LoginPage({
       <div className="card p-8">
         <h1 className="mb-1 text-2xl font-bold text-slate-900">Prijava</h1>
         <p className="mb-6 text-sm text-slate-500">
-          NOVIDMS — ubaci → nađi
+          Docorex — ubaci → nađi
         </p>
         <LoginForm from={from} />
         <p className="mt-6 text-center text-sm text-slate-500">

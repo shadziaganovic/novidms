@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   });
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "NOVIDMS";
+  wb.creator = "Docorex";
   const ws = wb.addWorksheet("Dokumenti");
   ws.columns = [
     { header: "Naziv", key: "title", width: 32 },
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="novidms-dokumenti-${date}.xlsx"`,
+      "Content-Disposition": `attachment; filename="docorex-dokumenti-${date}.xlsx"`,
     },
   });
 }
