@@ -351,6 +351,9 @@ export default async function DocumentsPage({
           <a href={exportHref} className="btn-secondary btn-sm">
             Izvoz u Excel
           </a>
+          <Link href="/documents/from-template" className="btn-secondary btn-sm">
+            Iz predloška
+          </Link>
           <Link href="/documents/new" className="btn-primary btn-sm">
             Dodaj dokument
           </Link>

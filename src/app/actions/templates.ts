@@ -6,7 +6,12 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { getTenantContext } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { parseTemplateFields } from "@/lib/templates";
+import { storagePut, buildStorageKey } from "@/lib/storage";
+import { logAudit } from "@/lib/audit";
+import { loadEntitlement, restrictedMessage } from "@/lib/entitlement";
+import { formatDate } from "@/lib/format";
+import { fillTemplate, parseTemplateFields } from "@/lib/templates";
+import { renderTemplatePdf } from "@/lib/template-pdf";
 
 export type TemplateState = { error?: string } | undefined;
 
@@ -87,4 +92,67 @@ export async function deleteTemplate(formData: FormData): Promise<void> {
     where: { id, tenantId: ctx.tenantId },
   });
   revalidatePath("/admin/templates");
+}
+
+export type FillState = { error?: string } | undefined;
+
+/**
+ * Create a finished document from a template: fill the fields, render a PDF,
+ * store it and save a Document in the DMS (searchable via ocrText). Any
+ * authenticated member can create; blocked when the trial/subscription lapsed.
+ */
+export async function createFromTemplate(
+  _prev: FillState,
+  formData: FormData,
+): Promise<FillState> {
+  const ctx = await getTenantContext();
+  const ent = await loadEntitlement(ctx.tenantId);
+  if (!ent.active) return { error: restrictedMessage(ent.status) };
+
+  const id = String(formData.get("templateId") ?? "");
+  const tpl = await prisma.documentTemplate.findFirst({
+    where: { id, tenantId: ctx.tenantId },
+    select: { name: true, body: true, fields: true },
+  });
+  if (!tpl) return { error: "Predložak nije pronađen." };
+
+  const fields = parseTemplateFields(tpl.fields);
+  const values: Record<string, string> = {};
+  for (const f of fields) {
+    let v = String(formData.get(f.key) ?? "").trim();
+    if (f.required && !v) return { error: `Polje „${f.label}" je obavezno.` };
+    if (f.type === "date" && v) v = formatDate(v);
+    values[f.key] = v;
+  }
+
+  const filled = fillTemplate(tpl.body, values);
+  const pdf = await renderTemplatePdf(filled);
+  const fileKey = await storagePut(
+    buildStorageKey(ctx.tenantId, `${tpl.name}.pdf`),
+    pdf,
+  );
+
+  const doc = await prisma.document.create({
+    data: {
+      tenantId: ctx.tenantId,
+      title: tpl.name,
+      fileKey,
+      mimeType: "application/pdf",
+      sizeBytes: pdf.length,
+      ocrStatus: "DONE",
+      ocrText: filled,
+      uploadedById: ctx.userId,
+    },
+    select: { id: true },
+  });
+
+  await logAudit({
+    tenantId: ctx.tenantId,
+    documentId: doc.id,
+    userId: ctx.userId,
+    action: "UPLOAD",
+  });
+
+  revalidatePath("/documents");
+  redirect(`/documents/${doc.id}`);
 }

@@ -59,3 +59,14 @@ export function parseTemplateFields(raw: unknown): TemplateField[] {
   }
   return out;
 }
+
+/** Replace {{key}} placeholders in a template body with the given values. */
+export function fillTemplate(
+  body: string,
+  values: Record<string, string>,
+): string {
+  return body.replace(
+    /\{\{\s*([a-z0-9_]+)\s*\}\}/g,
+    (_m, key: string) => values[key] ?? "",
+  );
+}
