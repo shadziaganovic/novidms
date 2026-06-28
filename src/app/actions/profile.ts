@@ -61,9 +61,10 @@ export async function updateNotifications(
   const ctx = await getTenantContext();
   if (ctx.role !== "ADMIN") return { error: "Samo administrator firme." };
   const notifyNewDocument = formData.get("notifyNewDocument") === "on";
+  const notifyTrialExpiry = formData.get("notifyTrialExpiry") === "on";
   await prisma.tenant.update({
     where: { id: ctx.tenantId },
-    data: { notifyNewDocument },
+    data: { notifyNewDocument, notifyTrialExpiry },
   });
   revalidatePath("/account");
   return { ok: true };

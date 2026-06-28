@@ -14,7 +14,7 @@ export default async function AccountPage() {
     }),
     prisma.tenant.findUnique({
       where: { id: ctx.tenantId },
-      select: { name: true, notifyNewDocument: true },
+      select: { name: true, notifyNewDocument: true, notifyTrialExpiry: true },
     }),
   ]);
 
@@ -55,6 +55,7 @@ export default async function AccountPage() {
             </h2>
             <NotificationsForm
               notifyNewDocument={tenant?.notifyNewDocument ?? true}
+              notifyTrialExpiry={tenant?.notifyTrialExpiry ?? true}
             />
           </section>
         </>

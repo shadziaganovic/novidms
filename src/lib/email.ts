@@ -188,3 +188,51 @@ export async function sendNewDocumentEmail(opts: {
       `Otvori: ${opts.documentLink}\n`,
   });
 }
+
+const TRIAL_FOOTER =
+  "Ovaj email poslan je jer su uključene obavijesti o isteku probnog razdoblja za vašu firmu. Možete ih isključiti u Docorexu: Moj profil → Obavijesti.";
+
+/** Remind a company admin that the trial is about to expire. */
+export async function sendTrialEndingEmail(opts: {
+  to: string;
+  recipientName: string;
+  tenantName: string;
+  daysLeft: number;
+}): Promise<SendResult> {
+  const name = opts.recipientName.trim();
+  const greeting = name ? `Pozdrav ${escapeHtml(name)},` : "Pozdrav,";
+  const firm = opts.tenantName.trim() || "vaše firme";
+  const daysText = opts.daysLeft === 1 ? "1 dan" : `${opts.daysLeft} dana`;
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const support = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "info@docorex.com";
+
+  const content = `
+    <h1 style="margin:0 0 10px;font-size:22px;">Probno razdoblje uskoro istječe</h1>
+    <p style="margin:0 0 4px;">${greeting}</p>
+    <p style="margin:0 0 16px;color:#475569;">
+      Probno razdoblje za <strong>${escapeHtml(firm)}</strong> istječe za
+      <strong>${daysText}</strong>. Nakon isteka, dodavanje dokumenata i pozivanje
+      korisnika bit će onemogućeni dok se pretplata ne aktivira — pregled, pretraga
+      i izvoz nastavljaju raditi.
+    </p>
+    <p style="margin:0 0 16px;color:#475569;">
+      Za trajnu aktivaciju javite se na
+      <a href="mailto:${support}" style="color:#4f46e5;">${support}</a>.
+    </p>
+    ${
+      base
+        ? `<div style="text-align:center;margin:24px 0;"><a href="${base}/dashboard" style="display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Otvori Docorex</a></div>`
+        : ""
+    }
+  `;
+
+  return sendEmail({
+    to: opts.to,
+    subject: `Probno razdoblje istječe za ${daysText} — Docorex`,
+    html: layout(content, TRIAL_FOOTER),
+    text:
+      `${name ? `Pozdrav ${name},` : "Pozdrav,"}\n\n` +
+      `Probno razdoblje za ${firm} istječe za ${daysText}.\n` +
+      `Za trajnu aktivaciju javite se na ${support}.\n`,
+  });
+}

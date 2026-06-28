@@ -27,6 +27,10 @@ model Tenant {
   trialEndsAt  DateTime?
   // Email admine kad netko doda novi dokument (uključeno po defaultu).
   notifyNewDocument Boolean  @default(true)
+  // Email admine par dana prije isteka probnog razdoblja (uključeno po defaultu).
+  notifyTrialExpiry Boolean  @default(true)
+  // Kad je poslan podsjetnik o isteku triala (sprječava dnevno ponavljanje).
+  trialReminderSentAt DateTime?
   createdAt    DateTime     @default(now())
   users        User[]
   documents    Document[]

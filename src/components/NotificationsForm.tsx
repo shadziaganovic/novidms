@@ -5,8 +5,10 @@ import { updateNotifications, type ProfileState } from "@/app/actions/profile";
 
 export function NotificationsForm({
   notifyNewDocument,
+  notifyTrialExpiry,
 }: {
   notifyNewDocument: boolean;
+  notifyTrialExpiry: boolean;
 }) {
   const [state, action, pending] = useActionState<ProfileState, FormData>(
     updateNotifications,
@@ -24,6 +26,18 @@ export function NotificationsForm({
         />
         <span>
           Email obavijest administratorima kad netko doda novi dokument
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          name="notifyTrialExpiry"
+          defaultChecked={notifyTrialExpiry}
+          className="mt-0.5 h-4 w-4"
+        />
+        <span>
+          Email podsjetnik administratorima par dana prije isteka probnog
+          razdoblja
         </span>
       </label>
       {state?.error ? (

@@ -40,7 +40,11 @@ export async function extendTrial(tenantId: string): Promise<void> {
       : Date.now();
   await prisma.tenant.update({
     where: { id: tenantId },
-    data: { status: "TRIAL", trialEndsAt: new Date(base + TRIAL_DAYS * DAY_MS) },
+    data: {
+      status: "TRIAL",
+      trialEndsAt: new Date(base + TRIAL_DAYS * DAY_MS),
+      trialReminderSentAt: null, // novi rok → dopusti novi podsjetnik
+    },
   });
   revalidatePath("/owner");
 }
