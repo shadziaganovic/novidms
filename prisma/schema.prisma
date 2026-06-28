@@ -37,6 +37,24 @@ model Tenant {
   categories   Category[]
   costCenters  CostCenter[]
   templates    DocumentTemplate[]
+  workflows    WorkflowDefinition[]
+}
+
+// Admin-defined approval process: an ordered list of step labels. Who approves
+// each step is chosen by the user when they start the workflow on a document.
+model WorkflowDefinition {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  // Uređeni niz koraka (oznake), npr. ["Voditelj odjela","Direktor"] (JSON).
+  steps       Json     @default("[]")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 model DocumentTemplate {
