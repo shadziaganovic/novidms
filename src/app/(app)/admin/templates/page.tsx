@@ -19,6 +19,7 @@ export default async function TemplatesPage() {
       name: true,
       description: true,
       fields: true,
+      kind: true,
       updatedAt: true,
     },
   });
@@ -65,6 +66,7 @@ export default async function TemplatesPage() {
                     </p>
                   ) : null}
                   <p className="text-xs text-slate-400">
+                    {t.kind === "DOCX" ? "Word (.docx)" : "Tekst → PDF"} ·{" "}
                     {count} {count === 1 ? "polje" : "polja"} · ažurirano{" "}
                     {formatDate(t.updatedAt)}
                   </p>

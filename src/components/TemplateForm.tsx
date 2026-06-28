@@ -18,6 +18,8 @@ type Initial = {
   name: string;
   description: string;
   body: string;
+  kind: "TEXT" | "DOCX";
+  hasFile: boolean;
   fields: TemplateField[];
 };
 
@@ -27,9 +29,8 @@ export function TemplateForm({ template }: { template?: Initial }) {
     editing ? updateTemplate : createTemplate,
     undefined,
   );
-  const [fields, setFields] = useState<TemplateField[]>(
-    template?.fields ?? [],
-  );
+  const [fields, setFields] = useState<TemplateField[]>(template?.fields ?? []);
+  const [kind, setKind] = useState<"TEXT" | "DOCX">(template?.kind ?? "TEXT");
 
   const addField = () =>
     setFields((f) => [...f, { key: "", label: "", type: "text", required: false }]);
@@ -41,12 +42,8 @@ export function TemplateForm({ template }: { template?: Initial }) {
   return (
     <form action={action} className="flex flex-col gap-5">
       {editing ? <input type="hidden" name="id" value={template.id} /> : null}
-      <input
-        type="hidden"
-        name="fields"
-        value={JSON.stringify(fields)}
-        readOnly
-      />
+      <input type="hidden" name="fields" value={JSON.stringify(fields)} readOnly />
+      <input type="hidden" name="kind" value={kind} readOnly />
 
       <div>
         <label className="label" htmlFor="name">
@@ -76,26 +73,72 @@ export function TemplateForm({ template }: { template?: Initial }) {
       </div>
 
       <div>
-        <div className="flex items-center justify-between">
-          <label className="label" htmlFor="body">
-            Tekst predloška
+        <span className="label">Vrsta predloška</span>
+        <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="_kind"
+              checked={kind === "TEXT"}
+              onChange={() => setKind("TEXT")}
+            />
+            Tekst (na portalu → PDF)
           </label>
-          <span className="text-xs text-slate-400">
-            Polje umetni s {"{{kljuc}}"}
-          </span>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="_kind"
+              checked={kind === "DOCX"}
+              onChange={() => setKind("DOCX")}
+            />
+            Word (.docx → DOCX)
+          </label>
         </div>
-        <textarea
-          id="body"
-          name="body"
-          rows={10}
-          required
-          className="input font-mono text-sm"
-          defaultValue={template?.body ?? ""}
-          placeholder={
-            "Na temelju ... donosi se\n\nODLUKA\n\no otpisu osnovnog sredstva {{naziv_sredstva}} u vrijednosti {{vrijednost}} EUR.\n\nU {{mjesto}}, {{datum}}"
-          }
-        />
       </div>
+
+      {kind === "TEXT" ? (
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="label" htmlFor="body">
+              Tekst predloška
+            </label>
+            <span className="text-xs text-slate-400">
+              Polje umetni s {"{{kljuc}}"}
+            </span>
+          </div>
+          <textarea
+            id="body"
+            name="body"
+            rows={10}
+            className="input font-mono text-sm"
+            defaultValue={template?.body ?? ""}
+            placeholder={
+              "Na temelju ... donosi se\n\nODLUKA\n\no otpisu osnovnog sredstva {{naziv_sredstva}} u vrijednosti {{vrijednost}} EUR.\n\nU {{mjesto}}, {{datum}}"
+            }
+          />
+        </div>
+      ) : (
+        <div>
+          <label className="label" htmlFor="file">
+            Word predložak (.docx)
+          </label>
+          <input
+            id="file"
+            name="file"
+            type="file"
+            accept=".docx"
+            className="input"
+          />
+          {editing && template.hasFile ? (
+            <p className="mt-1 text-xs text-slate-400">
+              Datoteka je već učitana — učitaj novu da je zamijeniš.
+            </p>
+          ) : null}
+          <p className="mt-1 text-xs text-slate-400">
+            U Word dokumentu koristi {"{{kljuc}}"} za mjesta koja se popunjavaju.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -112,9 +155,8 @@ export function TemplateForm({ template }: { template?: Initial }) {
         </div>
         {fields.length === 0 ? (
           <p className="text-sm text-slate-400">
-            Još nema polja. Dodaj polja koja korisnik popunjava (npr.
-            naziv_sredstva, vrijednost, datum) i referenciraj ih u tekstu s{" "}
-            {"{{kljuc}}"}.
+            Još nema polja. Dodaj polja koja korisnik popunjava i referenciraj ih
+            s {"{{kljuc}}"}.
           </p>
         ) : (
           <div className="flex flex-col gap-2">

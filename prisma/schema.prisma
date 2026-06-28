@@ -48,6 +48,9 @@ model DocumentTemplate {
   body        String   @db.Text
   // Polja koja korisnik popunjava: [{ key, label, type, required }] (JSON).
   fields      Json     @default("[]")
+  // "TEXT" = portal editor (body → PDF) · "DOCX" = uploani Word (fileKey → DOCX).
+  kind        String   @default("TEXT")
+  fileKey     String?
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

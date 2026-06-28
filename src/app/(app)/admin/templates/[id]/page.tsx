@@ -22,6 +22,8 @@ export default async function EditTemplatePage({
       description: true,
       body: true,
       fields: true,
+      kind: true,
+      fileKey: true,
     },
   });
   if (!t) notFound();
@@ -36,6 +38,8 @@ export default async function EditTemplatePage({
             name: t.name,
             description: t.description ?? "",
             body: t.body,
+            kind: t.kind === "DOCX" ? "DOCX" : "TEXT",
+            hasFile: !!t.fileKey,
             fields: parseTemplateFields(t.fields),
           }}
         />
