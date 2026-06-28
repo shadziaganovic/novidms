@@ -52,6 +52,9 @@ export default async function AppLayout({
                   <Link href="/admin/users" className="hover:text-brand-600">
                     Korisnici
                   </Link>
+                  <Link href="/admin/templates" className="hover:text-brand-600">
+                    Predlošci
+                  </Link>
                 </>
               ) : null}
               {user?.platformAdmin ? (
