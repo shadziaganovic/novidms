@@ -57,6 +57,42 @@ model WorkflowDefinition {
   @@index([tenantId])
 }
 
+// A running approval process on a document. status: IN_PROGRESS | APPROVED |
+// REJECTED. currentStep = index of the step awaiting a decision.
+model WorkflowInstance {
+  id           String   @id @default(cuid())
+  tenantId     String
+  documentId   String
+  definitionId String?
+  processName  String
+  status       String   @default("IN_PROGRESS")
+  currentStep  Int      @default(0)
+  startedById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  steps        WorkflowStepInstance[]
+
+  @@index([tenantId])
+  @@index([documentId])
+}
+
+// One step of a running instance: the chosen approver + their decision.
+// decision: PENDING | APPROVED | REJECTED.
+model WorkflowStepInstance {
+  id         String           @id @default(cuid())
+  instanceId String
+  instance   WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  idx        Int
+  label      String
+  approverId String
+  decision   String           @default("PENDING")
+  comment    String?
+  decidedAt  DateTime?
+
+  @@index([instanceId])
+  @@index([approverId])
+}
+
 model DocumentTemplate {
   id          String   @id @default(cuid())
   tenantId    String

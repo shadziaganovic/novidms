@@ -38,6 +38,9 @@ export default async function AppLayout({
               <Link href="/documents" className="hover:text-brand-600">
                 Dokumenti
               </Link>
+              <Link href="/approvals" className="hover:text-brand-600">
+                Odobravanja
+              </Link>
               {ctx.role === "ADMIN" ? (
                 <>
                   <Link

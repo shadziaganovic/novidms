@@ -11,6 +11,8 @@ import { AiExtractButton } from "@/components/AiExtractButton";
 import { ReprocessOcrButton } from "@/components/ReprocessOcrButton";
 import { formatBytes, ALLOWED_MIME } from "@/lib/documents";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { parseSteps } from "@/lib/workflow";
+import { StartWorkflowForm } from "@/components/StartWorkflowForm";
 
 // "Ponovi OCR" re-runs OCR (incl. AI vision for scans) synchronously, which can
 // take tens of seconds — give the route headroom (Vercel Hobby caps at 60s).
@@ -102,6 +104,37 @@ export default async function DocumentDetailPage({
   });
   const actorName = (uid: string) =>
     actors.find((u) => u.id === uid)?.name ?? "—";
+
+  // Approval workflow: latest instance (+ its steps), processes, tenant users.
+  const [wfInstance, wfDefsRaw, wfUsers] = await Promise.all([
+    prisma.workflowInstance.findFirst({
+      where: { documentId: id, tenantId: ctx.tenantId },
+      orderBy: { createdAt: "desc" },
+      include: { steps: { orderBy: { idx: "asc" } } },
+    }),
+    prisma.workflowDefinition.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, steps: true },
+    }),
+    prisma.user.findMany({
+      where: { tenantId: ctx.tenantId, acceptedAt: { not: null } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const wfActive = wfInstance?.status === "IN_PROGRESS";
+  const wfDefs = wfDefsRaw.map((d) => ({
+    id: d.id,
+    name: d.name,
+    steps: parseSteps(d.steps),
+  }));
+  const wfUserName = (uid: string) =>
+    wfUsers.find((u) => u.id === uid)?.name ?? "—";
+  const WF_STATUS: Record<string, string> = {
+    IN_PROGRESS: "U tijeku",
+    APPROVED: "Odobreno",
+    REJECTED: "Odbijeno",
+  };
 
   // Record the view after the response is sent (does not block render).
   after(() =>
@@ -231,6 +264,96 @@ export default async function DocumentDetailPage({
             <p className="text-sm text-slate-500">OCR obrada je u tijeku…</p>
           )}
         </div>
+      </div>
+
+      {/* Approval workflow */}
+      <div className="card p-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+          Odobravanje
+        </h2>
+        {wfInstance ? (
+          <div className="mb-4 flex flex-col gap-2">
+            <p className="text-sm">
+              <span className="font-medium text-slate-800">
+                {wfInstance.processName}
+              </span>{" "}
+              ·{" "}
+              <span
+                className={
+                  wfActive
+                    ? "text-amber-700"
+                    : wfInstance.status === "APPROVED"
+                      ? "text-green-700"
+                      : "text-red-700"
+                }
+              >
+                {WF_STATUS[wfInstance.status] ?? wfInstance.status}
+              </span>
+            </p>
+            <ol className="flex flex-col gap-1 text-sm">
+              {wfInstance.steps.map((s) => {
+                const isCurrent = wfActive && s.idx === wfInstance.currentStep;
+                return (
+                  <li
+                    key={s.id}
+                    className={`flex flex-wrap items-center gap-2 border-b border-slate-100 py-1.5 last:border-0 ${
+                      isCurrent ? "font-medium" : ""
+                    }`}
+                  >
+                    <span className="text-slate-400">{s.idx + 1}.</span>
+                    <span className="text-slate-700">{s.label}</span>
+                    <span className="text-slate-400">
+                      — {wfUserName(s.approverId)}
+                    </span>
+                    <span
+                      className={`ml-auto text-xs ${
+                        s.decision === "APPROVED"
+                          ? "text-green-700"
+                          : s.decision === "REJECTED"
+                            ? "text-red-700"
+                            : "text-slate-400"
+                      }`}
+                    >
+                      {s.decision === "APPROVED"
+                        ? "Odobreno"
+                        : s.decision === "REJECTED"
+                          ? "Odbijeno"
+                          : isCurrent
+                            ? "Na redu"
+                            : "Čeka"}
+                    </span>
+                    {s.comment ? (
+                      <span className="w-full text-xs text-red-600">
+                        „{s.comment}"
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ) : null}
+
+        {!wfActive ? (
+          wfDefs.length > 0 ? (
+            <div>
+              {wfInstance ? (
+                <p className="mb-3 text-sm text-slate-500">
+                  Pokreni novo odobravanje:
+                </p>
+              ) : null}
+              <StartWorkflowForm
+                documentId={doc.id}
+                definitions={wfDefs}
+                users={wfUsers}
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Administrator još nije definirao procese odobravanja.
+            </p>
+          )
+        ) : null}
       </div>
 
       {/* Edit (admin only) */}
